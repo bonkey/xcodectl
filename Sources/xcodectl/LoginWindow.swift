@@ -7,8 +7,8 @@ import Foundation
 import LibFido2Swift
 import WebKit
 
-/// One window with a WKWebView on a throwaway data store. Returns the apple.com cookies once
-/// Apple's portal reports a signed-in session (`myacinfo` present on the downloads page).
+/// One window with a WKWebView on a throwaway data store. `run()` returns the apple.com cookies
+/// once Apple's portal reports a signed-in session (`myacinfo` present on the downloads page).
 ///
 /// WebKit refuses WebAuthn for domains a third-party app cannot associate with (apple.com), so
 /// the page's `navigator.credentials.get` is routed through a user script to libfido2, which
@@ -40,35 +40,31 @@ final class LoginWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKScr
     static let startURL = URL(string: "https://developer.apple.com/download/all")!
     static let title = "xcodectl — sign in to Apple Developer"
 
-    /// Blocks on a modal run loop until signed in (cookies) or the window is closed (throws).
-    func run() throws -> [HTTPCookie] {
+    /// Shows the window and waits until signed in (cookies) or the window is closed (throws).
+    func run() async throws -> [HTTPCookie] {
         let app = NSApplication.shared
         app.setActivationPolicy(.regular)
         webView.load(URLRequest(url: Self.startURL))
         window.makeKeyAndOrderFront(nil)
         app.activate(ignoringOtherApps: true)
-
-        let timer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.poll() }
+        defer {
+            webView.configuration.userContentController.removeScriptMessageHandler(forName: "webauthn")
+            window.orderOut(nil)
+            app.setActivationPolicy(.prohibited)
         }
-        RunLoop.main.add(timer, forMode: .common)
-        self.timer = timer
-
-        let code = app.runModal(for: window)
-        timer.invalidate()
-        webView.configuration.userContentController.removeScriptMessageHandler(forName: "webauthn")
-        window.orderOut(nil)
-        app.setActivationPolicy(.prohibited)
-        guard code == .OK, let result else {
-            throw Fail("login cancelled")
+        while true {
+            try await Task.sleep(for: .seconds(1))
+            if closed {
+                throw Fail("login cancelled")
+            }
+            if let cookies = await signedInCookies() {
+                return cookies
+            }
         }
-        return result
     }
 
     func windowWillClose(_: Notification) {
-        if result == nil {
-            NSApp.stopModal(withCode: .abort)
-        }
+        closed = true
     }
 
     // MARK: - Navigation diagnostics
@@ -80,14 +76,8 @@ final class LoginWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKScr
     }
 
     func webView(_ webView: WKWebView, didFinish _: WKNavigation!) {
-        guard debug else {
-            return
-        }
-        eprint("[login] finished \(webView.url?.absoluteString ?? "?")")
-        webView.evaluateJavaScript(
-            "typeof window.__xcodectl + ' / ' + String(navigator.credentials.get).slice(0, 40) + ' / ' + typeof (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.webauthn)")
-        { value, error in
-            eprint("[login] shim check: \(value ?? "nil") \(error.map { "error: \($0)" } ?? "")")
+        if debug {
+            eprint("[login] finished \(webView.url?.absoluteString ?? "?")")
         }
     }
 
@@ -105,13 +95,15 @@ final class LoginWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKScr
 
     // MARK: - WebAuthn bridge
 
-    /// Message from the page: `{id, challenge, rpId, allow: [credentialId], origin}`, base64 values.
+    /// Message from the page: `{id, challenge, rpId, allow: [credentialId], origin}` (base64), or `{log}`.
     func userContentController(_: WKUserContentController, didReceive message: WKScriptMessage) {
         guard let body = message.body as? [String: Any] else {
             return
         }
         if let log = body["log"] as? String {
-            eprint("[login] page: \(log)")
+            if debug {
+                eprint("[login] page: \(log)")
+            }
             return
         }
         guard let id = body["id"] as? String,
@@ -122,31 +114,19 @@ final class LoginWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKScr
         else {
             return
         }
-        if debug {
-            eprint("[login] security key request for \(rpId), \(allow.count) credentials")
-        }
         let frame = message.frameInfo // the promise lives in the frame that asked (Apple's auth iframe)
-        window.title = "Touch your security key…"
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            let outcome = Result { try Self.assert(rpId: rpId, challenge: challenge, allow: allow, origin: origin) }
-            DispatchQueue.main.async {
-                guard let self else {
-                    return
+        Task {
+            window.title = "Touch your security key…"
+            defer { window.title = Self.title }
+            do {
+                let response = try await assert(rpId: rpId, challenge: challenge, allow: allow, origin: origin)
+                if debug {
+                    eprint("[login] assertion signed, credential \(response.credentialID.prefix(12))…")
                 }
-                self.window.title = Self.title
-                switch outcome {
-                case let .success(response):
-                    if self
-                        .debug
-                    {
-                        eprint("[login] assertion signed, credential \(response.credentialID.prefix(12))…")
-                    }
-                    self.resolve(id, response, in: frame)
-
-                case let .failure(error):
-                    eprint("[login] security key failed: \(error)")
-                    self.reject(id, error, in: frame)
-                }
+                resolve(id, response, in: frame)
+            } catch {
+                eprint("[login] security key failed: \(error)")
+                reject(id, error, in: frame)
             }
         }
     }
@@ -218,19 +198,23 @@ final class LoginWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKScr
 
     private let window: NSWindow
     private let webView: WKWebView
-    private var timer: Timer?
-    private var result: [HTTPCookie]?
+    private var closed = false
 
     private var debug: Bool {
         ProcessInfo.processInfo.environment["XCODECTL_DEBUG"] != nil
     }
 
-    /// Runs on a background thread: blocks until the key is touched.
-    private nonisolated static func assert(
+    /// JSON string literal.
+    private static func js(_ s: String) -> String {
+        let array = String(decoding: try! JSONSerialization.data(withJSONObject: [s]), as: UTF8.self)
+        return String(array.dropFirst().dropLast())
+    }
+
+    private func assert(
         rpId: String,
         challenge: String,
         allow: [String],
-        origin: String) throws
+        origin: String) async throws
         -> ChallengeResponse
     {
         let fido = FIDO2()
@@ -239,16 +223,17 @@ final class LoginWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKScr
         }
         var pin: String?
         if try fido.deviceHasPin() {
-            pin = DispatchQueue.main.sync { MainActor.assumeIsolated { askPin() } }
-            guard pin != nil else {
+            guard let entered = await askPin() else {
                 throw Fail("PIN entry cancelled")
             }
+            pin = entered
         }
-        return try fido.respondToChallenge(args: ChallengeArgs(
-            rpId: rpId, validCredentials: allow, devPin: pin, challenge: challenge, origin: origin))
+        let args = ChallengeArgs(rpId: rpId, validCredentials: allow, devPin: pin, challenge: challenge, origin: origin)
+        // Blocks until the key is touched; keep it off the main thread.
+        return try await Task.detached { try fido.respondToChallenge(args: args) }.value
     }
 
-    private static func askPin() -> String? {
+    private func askPin() async -> String? {
         let alert = NSAlert()
         alert.messageText = "Security key PIN"
         alert.informativeText = "Enter the PIN of your security key, then touch the key when it blinks."
@@ -257,13 +242,8 @@ final class LoginWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKScr
         alert.addButton(withTitle: "OK")
         alert.addButton(withTitle: "Cancel")
         alert.window.initialFirstResponder = field
-        return alert.runModal() == .alertFirstButtonReturn ? field.stringValue : nil
-    }
-
-    /// JSON string literal.
-    private static func js(_ s: String) -> String {
-        let array = String(decoding: try! JSONSerialization.data(withJSONObject: [s]), as: UTF8.self)
-        return String(array.dropFirst().dropLast())
+        let response = await alert.beginSheetModal(for: window)
+        return response == .alertFirstButtonReturn ? field.stringValue : nil
     }
 
     private func resolve(_ id: String, _ r: ChallengeResponse, in frame: WKFrameInfo) {
@@ -289,22 +269,15 @@ final class LoginWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKScr
         }
     }
 
-    private func poll() {
-        guard result == nil,
-              let url = webView.url,
-              url.host == "developer.apple.com",
-              url.path.hasPrefix("/download")
-        else {
-            return
+    /// The apple.com cookies once the downloads page reports a login session, else nil.
+    private func signedInCookies() async -> [HTTPCookie]? {
+        guard let url = webView.url, url.host == "developer.apple.com", url.path.hasPrefix("/download") else {
+            return nil
         }
-        webView.configuration.websiteDataStore.httpCookieStore.getAllCookies { [weak self] cookies in
-            guard let self, result == nil,
-                  cookies.contains(where: { $0.name == Session.loginCookie })
-            else {
-                return
-            }
-            result = cookies.filter { $0.domain.lowercased().hasSuffix("apple.com") }
-            NSApp.stopModal(withCode: .OK)
+        let cookies = await webView.configuration.websiteDataStore.httpCookieStore.allCookies()
+        guard cookies.contains(where: { $0.name == Session.loginCookie }) else {
+            return nil
         }
+        return cookies.filter { $0.domain.lowercased().hasSuffix("apple.com") }
     }
 }

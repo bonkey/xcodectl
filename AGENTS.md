@@ -13,8 +13,11 @@ downloads page) the `apple.com` cookies go into the login Keychain as one generi
 `developer.apple.com/services-account/QH65B2/downloadws/listDownloads.action` with the stored
 session. Version metadata and direct XIP URLs come from `xcodereleases.com/data.json`.
 Download is 16 parallel `Range` requests on URLSession writing into one preallocated file
-(resumable via a `.state` sidecar). Expansion is in-process `libunxip`. `approve` and `select`
-are the only commands that call `sudo`.
+(resumable via a `.state` sidecar). Expansion is in-process `libunxip`. `approve` (run by
+`install` unless `--no-approve`) and `select` are the only commands that call `sudo`.
+Security keys: WebKit refuses WebAuthn for apple.com in third-party apps, so a user script
+routes `navigator.credentials.get` to LibFido2Swift (libfido2 over USB) and returns the
+assertion into the requesting iframe.
 
 ## Layout
 
@@ -23,7 +26,8 @@ Sources/xcodectl/
   XcodeCtl.swift     commands, pickers, tables (Noora for TUI)
   Releases.swift     data.json model, version query parsing/matching, listing
   Session.swift      cookie model, Keychain, XCODECTL_SESSION, download-ticket refresh
-  LoginWindow.swift  AppKit + WKWebView modal window (only file importing AppKit/WebKit)
+  LoginWindow.swift  AppKit + WKWebView window, WebAuthn→libfido2 bridge (only file importing AppKit/WebKit)
+  main.swift         entry point: NSApp.run() on main, command in a detached task
   Downloader.swift   parallel ranged download + resume
   Install.swift      installed scan, unxip, move, approve, select, remove
   Shell.swift        Fail error, paths, sudo(), small system helpers
@@ -32,10 +36,15 @@ Sources/xcodectl/
 
 ## Conventions
 
-- Swift 5 language mode, macOS 14+. Dependencies: swift-argument-parser, Noora, unxip. Do not add
+- Swift 5 language mode, macOS 14+. Dependencies: swift-argument-parser, Noora, unxip, LibFido2Swift. Do not add
   more without a reason that survives "could Foundation do this".
 - No external processes except `/usr/bin/sudo` (approve, select, remove fallback). Networking is
   URLSession; XIP expansion is libunxip.
+- Concurrency: AppKit owns the main thread (`main.swift` starts `NSApp.run()`), the command runs
+  in a detached task. Never block the main thread: WebKit and unxip (DispatchIO on the main queue)
+  need it. Blocking library calls (libfido2 touch wait) go in `Task.detached`.
+- LibFido2Swift ships `libcrypto`/`libcbor` as dylibs with an invalid signature; `just build`
+  re-signs the copies next to the binary. Static linking is the planned fix.
 - Nothing cookie-related ever touches disk. Session lives in the Keychain or in the
   `XCODECTL_SESSION` environment variable (base64 JSON), never in a file.
 - Errors: throw `Fail("one actionable line")`; ArgumentParser prints it and exits 1.

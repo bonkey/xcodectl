@@ -101,18 +101,16 @@ func releaseRows(_ releases: [Release]) -> [[String]] {
 
 // MARK: - Login
 
-struct Login: ParsableCommand {
+struct Login: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         abstract: "Sign in to Apple Developer in a window; keeps the session in your Keychain.",
-        discussion: "Two-factor codes (trusted device, SMS) work. Security keys and passkeys cannot be used in an embedded web view.")
+        discussion: "Two-factor codes and security keys (YubiKey etc.) work; the key is driven by the tool itself.")
 
-    /// Synchronous on purpose: the web view needs the main run loop free, which it is not inside async main.
-    func run() throws {
-        let cookies = try MainActor.assumeIsolated { try LoginWindow().run() }.map(Cookie.init)
-        let withTicket = try runBlocking {
-            try await ui.progressStep(message: "Fetching download ticket") { _ in
-                try await Session.refreshTicket(cookies)
-            }
+    func run() async throws {
+        let window = await MainActor.run { LoginWindow() }
+        let cookies = try await window.run().map(Cookie.init)
+        let withTicket = try await ui.progressStep(message: "Fetching download ticket") { _ in
+            try await Session.refreshTicket(cookies)
         }
         try Session.save(withTicket)
         ui.success("Signed in. Runners: `xcodectl session export` here, `xcodectl session import` there.")
@@ -204,8 +202,8 @@ struct Install: AsyncParsableCommand {
     @Argument(help: "26.1, 27, 27-rc1, '27 beta 3', 27A266a, latest, latest-beta. Omit for a picker.")
     var version: String?
 
-    @Flag(help: "Run `approve` afterwards (needs sudo).")
-    var approve = false
+    @Flag(help: "Skip `approve` (license, first launch; needs sudo). Default: approve after installing.")
+    var noApprove = false
 
     @Flag(help: "Run `select` afterwards (needs sudo).")
     var select = false
@@ -231,17 +229,13 @@ struct Install: AsyncParsableCommand {
             xcode = try await install(release)
         }
 
-        if approve {
+        if !noApprove {
             try Installer.approve(xcode)
         }
         if select {
             try Installer.select(xcode)
-        }
-        if !approve, !select {
-            ui
-                .info(
-                    InfoAlert(
-                        stringLiteral: "next: `xcodectl approve \(release.display)` (license, first launch; needs sudo) and `xcodectl select \(release.display)`"))
+        } else {
+            ui.info(InfoAlert(stringLiteral: "next: `xcodectl select \(release.display)` to make it the active Xcode"))
         }
     }
 

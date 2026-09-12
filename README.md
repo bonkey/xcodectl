@@ -8,8 +8,8 @@ session in your Keychain and does the rest.
 xcodectl login                     sign in to Apple Developer (once)
 xcodectl list [<regex>]            versions: latest major + newest beta major; regex searches all
 xcodectl list-installed            what is in /Applications, active one starred
-xcodectl install [<ver>] [--approve] [--select]
-xcodectl approve [<ver>]           license + first launch + developer mode (sudo)
+xcodectl install [<ver>] [--select] [--no-approve]
+xcodectl approve [<ver>]           license + first launch + developer mode (sudo); install does this by default
 xcodectl select [<ver>]            xcode-select (sudo)
 xcodectl remove <ver>
 xcodectl session export | import   move the session to a runner
@@ -32,14 +32,13 @@ git clone https://github.com/bonkey/xcodectl && cd xcodectl && just install
 
 ```
 xcodectl login          # a window opens; sign in with your Apple ID and 2FA code
-xcodectl install 26.6   # downloads (16 connections), expands, moves to /Applications/Xcode-26.6.app
-xcodectl approve 26.6   # sudo: accept license, install first-launch packages
+xcodectl install 26.6   # downloads (16 connections), expands, moves to /Applications/Xcode-26.6.app,
+                        # then approves it (sudo: license, first-launch packages)
 xcodectl select 26.6    # sudo: xcode-select
 ```
 
-Two-factor codes sent to a trusted device or by SMS work in the window. Security keys and
-passkeys do not: an embedded web view cannot use them for apple.com. Turn off Security Keys for
-the account you use for downloads, or use a second Apple ID.
+Two-factor codes (trusted device, SMS) and hardware security keys (YubiKey and other FIDO2 keys,
+PIN + touch) both work in the window. Passkeys stored in iCloud Keychain do not.
 
 ## CI (self-hosted runner)
 
@@ -47,7 +46,7 @@ On your Mac: `xcodectl session export | pbcopy`. On the runner, once:
 `pbpaste | xcodectl session import` (stores it in that runner's Keychain). Then in the job:
 
 ```
-xcodectl install 26.6 --approve --select
+xcodectl install 26.6 --select
 ```
 
 Alternatively pass the blob per job as `XCODECTL_SESSION`; it is then used in memory only.
@@ -58,7 +57,8 @@ export again.
 
 - Versions and direct download URLs: `https://xcodereleases.com/data.json`.
 - Auth: Apple's portal sets a long-lived login session in the window; the tool keeps only the
-  `apple.com` cookies, in the Keychain. Each download needs a ~24 h `ADCDownloadAuth` cookie,
+  `apple.com` cookies, in the Keychain. WebKit refuses WebAuthn for apple.com in third-party apps,
+  so the page's `navigator.credentials.get` is routed to libfido2, which drives the security key. Each download needs a ~24 h `ADCDownloadAuth` cookie,
   which the tool fetches itself from Apple's download-list endpoint using that session.
 - Download: 16 parallel HTTP range requests on URLSession into one preallocated file, resumable.
 - Expand: in-process [unxip](https://github.com/saagarjha/unxip).
