@@ -58,8 +58,9 @@ export again.
 - Versions and direct download URLs: `https://xcodereleases.com/data.json`.
 - Auth: Apple's portal sets a long-lived login session in the window; the tool keeps only the
   `apple.com` cookies, in the Keychain. WebKit refuses WebAuthn for apple.com in third-party apps,
-  so the page's `navigator.credentials.get` is routed to libfido2, which drives the security key. Each download needs a ~24 h `ADCDownloadAuth` cookie,
-  which the tool fetches itself from Apple's download-list endpoint using that session.
+  so the page's `navigator.credentials.get` is routed to libfido2, which drives the security key.
+  Each download needs a ~24 h `ADCDownloadAuth` cookie, which the tool fetches itself from Apple's
+  download-list endpoint using that session.
 - Download: 16 parallel HTTP range requests on URLSession into one preallocated file, resumable.
 - Expand: in-process [unxip](https://github.com/saagarjha/unxip).
 - `approve`: `xcodebuild -license accept`, `xcodebuild -runFirstLaunch`, `DevToolsSecurity -enable`.
