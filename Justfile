@@ -53,8 +53,8 @@ release VER="":
         git commit -qam "Release $ver"
     fi
     swift build -c release --arch arm64 --arch x86_64
-    git tag "v$ver"
-    git push --follow-tags
+    git tag "v$ver" 2>/dev/null || [ "$(git rev-parse "v$ver")" = "$(git rev-parse HEAD)" ]
+    git push && git push origin "v$ver"
     asset="xcodectl-$ver-macos-universal.tar.gz"
     tar -C "$(swift build -c release --arch arm64 --arch x86_64 --show-bin-path)" -czf "$asset" xcodectl
     shasum -a 256 "$asset" > "$asset.sha256"
