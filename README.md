@@ -50,6 +50,11 @@ xcodectl install 26.6 --select
 ```
 
 Alternatively pass the blob per job as `XCODECTL_SESSION`; it is then used in memory only.
+
+Over plain ssh the login Keychain is locked (macOS gives ssh logins their own security session),
+so `session import` and `install` fail with "User interaction is not allowed". Run
+`security unlock-keychain` in that ssh session first, do the import from a GUI session (Screen
+Sharing), or use `XCODECTL_SESSION`. Runners launched in the logged-in session are not affected.
 Apple's login session lasts weeks; when a job fails with "session expired", run `login` and
 export again.
 
