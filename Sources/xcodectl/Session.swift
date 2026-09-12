@@ -184,7 +184,7 @@ enum Keychain {
             return nil
         }
         guard status == errSecSuccess else {
-            throw Fail("keychain read failed: \(message(status))")
+            throw Fail("keychain read failed: \(message(status))\(hint(status))")
         }
         return item as? Data
     }
@@ -199,7 +199,7 @@ enum Keychain {
             status = SecItemAdd(add as CFDictionary, nil)
         }
         guard status == errSecSuccess else {
-            throw Fail("keychain write failed: \(message(status))")
+            throw Fail("keychain write failed: \(message(status))\(hint(status))")
         }
     }
 
@@ -213,6 +213,14 @@ enum Keychain {
             kSecAttrService as String: service,
             kSecAttrAccount as String: account,
         ]
+    }
+
+    /// Over ssh the login keychain is locked; say so instead of leaving the raw OSStatus.
+    private static func hint(_ status: OSStatus) -> String {
+        guard status == errSecInteractionNotAllowed else {
+            return ""
+        }
+        return " (login keychain is locked, typical over ssh: run `security unlock-keychain` first, or pass the session via \(Session.envKey))"
     }
 
     private static func message(_ status: OSStatus) -> String {
