@@ -48,7 +48,7 @@ Sources/xcodectl/
 ```
 just build            # swift build
 just run list         # swift run xcodectl list
-just release-build    # universal binary in .build/apple/Products/Release/
+just release-build    # universal binary; `just release-bin` prints its directory
 just install          # copy it to ~/.local/bin
 just lint / just fmt  # swiftformat
 ```

@@ -4,9 +4,13 @@
 build:
     swift build
 
-# Universal release build (.build/apple/Products/Release/xcodectl)
+# Universal release build; path printed by `just release-bin`
 release-build:
     swift build -c release --arch arm64 --arch x86_64
+
+# Directory of the universal release binary
+release-bin:
+    @swift build -c release --arch arm64 --arch x86_64 --show-bin-path
 
 # Run from source
 run *ARGS:
@@ -26,7 +30,7 @@ fmt:
 # Copy the release binary to ~/.local/bin
 install: release-build
     mkdir -p ~/.local/bin
-    cp .build/apple/Products/Release/xcodectl ~/.local/bin/xcodectl
+    cp "$(just release-bin)/xcodectl" ~/.local/bin/xcodectl
 
 clean:
     rm -rf .build
@@ -50,7 +54,7 @@ release VER="":
     git tag "v$ver"
     git push --follow-tags
     asset="xcodectl-$ver-macos-universal.tar.gz"
-    tar -C .build/apple/Products/Release -czf "$asset" xcodectl
+    tar -C "$(swift build -c release --arch arm64 --arch x86_64 --show-bin-path)" -czf "$asset" xcodectl
     shasum -a 256 "$asset" > "$asset.sha256"
     gh release create "v$ver" "$asset" "$asset.sha256" --title "v$ver" --generate-notes
     rm -f "$asset" "$asset.sha256"
