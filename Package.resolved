@@ -3,10 +3,10 @@
     {
       "identity" : "libfido2swift",
       "kind" : "remoteSourceControl",
-      "location" : "https://github.com/kinoroy/LibFido2Swift",
+      "location" : "https://github.com/bonkey/LibFido2Swift",
       "state" : {
-        "revision" : "ac8596a852e2b008c5902a521cf4d9c7f0f05fba",
-        "version" : "0.1.6"
+        "revision" : "3e7f36968e5f7389684e04adf438c12faa0a952b",
+        "version" : "0.2.0"
       }
     },
     {

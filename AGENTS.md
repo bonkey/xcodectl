@@ -36,15 +36,16 @@ Sources/xcodectl/
 
 ## Conventions
 
-- Swift 5 language mode, macOS 14+. Dependencies: swift-argument-parser, Noora, unxip, LibFido2Swift. Do not add
+- Swift 5 language mode, macOS 14+. Dependencies: swift-argument-parser, Noora, unxip, bonkey/LibFido2Swift. Do not add
   more without a reason that survives "could Foundation do this".
 - No external processes except `/usr/bin/sudo` (approve, select, remove fallback). Networking is
   URLSession; XIP expansion is libunxip.
 - Concurrency: AppKit owns the main thread (`main.swift` starts `NSApp.run()`), the command runs
   in a detached task. Never block the main thread: WebKit and unxip (DispatchIO on the main queue)
   need it. Blocking library calls (libfido2 touch wait) go in `Task.detached`.
-- LibFido2Swift ships `libcrypto`/`libcbor` as dylibs with an invalid signature; `just build`
-  re-signs the copies next to the binary. Static linking is the planned fix.
+- FIDO comes from the fork `bonkey/LibFido2Swift`, which ships libcbor/libcrypto as universal
+  static xcframeworks (see its STATIC.md), so the release binary is one self-contained file.
+  Upstream kinoroy/LibFido2Swift ships dylibs with an invalid signature; do not switch back.
 - Nothing cookie-related ever touches disk. Session lives in the Keychain or in the
   `XCODECTL_SESSION` environment variable (base64 JSON), never in a file.
 - Errors: throw `Fail("one actionable line")`; ArgumentParser prints it and exits 1.

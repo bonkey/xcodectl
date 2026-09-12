@@ -1,14 +1,12 @@
 # xcodectl tasks
 
-# Debug build (re-signs the FIDO dylibs SwiftPM copies next to the binary; their shipped signature is invalid)
+# Debug build
 build:
     swift build
-    codesign -f -s - "$(swift build --show-bin-path)"/*.dylib
 
 # Universal release build; path printed by `just release-bin`
 release-build:
     swift build -c release --arch arm64 --arch x86_64
-    codesign -f -s - "$(just release-bin)"/*.dylib
 
 # Directory of the universal release binary
 release-bin:
