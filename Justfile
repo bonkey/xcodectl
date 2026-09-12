@@ -48,9 +48,11 @@ release VER="":
         ver="$major.$minor.$((patch + 1))"
     fi
     echo "Releasing v$ver (was $current)"
-    sed -i '' "s/^let version = \".*\"$/let version = \"$ver\"/" Sources/xcodectl/Version.swift
+    if [ "$ver" != "$current" ]; then
+        sed -i '' "s/^let version = \".*\"$/let version = \"$ver\"/" Sources/xcodectl/Version.swift
+        git commit -qam "Release $ver"
+    fi
     swift build -c release --arch arm64 --arch x86_64
-    git commit -qam "Release $ver"
     git tag "v$ver"
     git push --follow-tags
     asset="xcodectl-$ver-macos-universal.tar.gz"
