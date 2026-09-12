@@ -9,7 +9,7 @@ import WebKit
 /// One window with a WKWebView on a throwaway data store. Returns the apple.com cookies once
 /// Apple's portal reports a signed-in session (`myacinfo` present on the downloads page).
 @MainActor
-final class LoginWindow: NSObject, NSWindowDelegate {
+final class LoginWindow: NSObject, NSWindowDelegate, WKNavigationDelegate {
     override init() {
         let config = WKWebViewConfiguration()
         config.websiteDataStore = .nonPersistent()
@@ -25,9 +25,34 @@ final class LoginWindow: NSObject, NSWindowDelegate {
         window.center()
         window.delegate = self
         window.isReleasedWhenClosed = false
+        webView.navigationDelegate = self
     }
 
     static let startURL = URL(string: "https://developer.apple.com/download/all")!
+
+    func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
+        if debug {
+            eprint("[login] start \(webView.url?.absoluteString ?? "?")")
+        }
+    }
+
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        if debug {
+            eprint("[login] finished \(webView.url?.absoluteString ?? "?")")
+        }
+    }
+
+    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+        eprint("[login] navigation failed: \(error.localizedDescription)")
+    }
+
+    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+        eprint("[login] navigation failed: \(error.localizedDescription)")
+    }
+
+    func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        eprint("[login] WebKit content process terminated")
+    }
 
     /// Blocks on a modal run loop until signed in (cookies) or the window is closed (throws).
     func run() throws -> [HTTPCookie] {
@@ -63,6 +88,10 @@ final class LoginWindow: NSObject, NSWindowDelegate {
     private let webView: WKWebView
     private var timer: Timer?
     private var result: [HTTPCookie]?
+
+    private var debug: Bool {
+        ProcessInfo.processInfo.environment["XCODECTL_DEBUG"] != nil
+    }
 
     private func poll() {
         guard result == nil,

@@ -8,7 +8,6 @@ import Noora
 
 // MARK: - XcodeCtl
 
-@main
 struct XcodeCtl: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "xcodectl",
@@ -102,15 +101,18 @@ func releaseRows(_ releases: [Release]) -> [[String]] {
 
 // MARK: - Login
 
-struct Login: AsyncParsableCommand {
+struct Login: ParsableCommand {
     static let configuration = CommandConfiguration(
         abstract: "Sign in to Apple Developer in a window; keeps the session in your Keychain.",
         discussion: "Two-factor codes (trusted device, SMS) work. Security keys and passkeys cannot be used in an embedded web view.")
 
-    func run() async throws {
-        let cookies = try await MainActor.run { try LoginWindow().run() }.map(Cookie.init)
-        let withTicket = try await ui.progressStep(message: "Fetching download ticket") { _ in
-            try await Session.refreshTicket(cookies)
+    /// Synchronous on purpose: the web view needs the main run loop free, which it is not inside async main.
+    func run() throws {
+        let cookies = try MainActor.assumeIsolated { try LoginWindow().run() }.map(Cookie.init)
+        let withTicket = try runBlocking {
+            try await ui.progressStep(message: "Fetching download ticket") { _ in
+                try await Session.refreshTicket(cookies)
+            }
         }
         try Session.save(withTicket)
         ui.success("Signed in. Runners: `xcodectl session export` here, `xcodectl session import` there.")
