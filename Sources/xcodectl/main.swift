@@ -12,18 +12,26 @@ import Foundation
 // Sync commands run on the main thread; async ones run on a background task while main waits.
 
 private final class ResultBox<T>: @unchecked Sendable {
-    var result: Result<T, Error>?
+    var result: Result<T, Error>? {
+        get { lock.withLock { stored } }
+        set { lock.withLock { stored = newValue } }
+    }
+
+    private let lock = NSLock()
+    private var stored: Result<T, Error>?
 }
 
-/// Runs async work from synchronous code, blocking the calling thread until it finishes.
+/// Runs async work from synchronous code. The main thread keeps servicing its run loop (and
+/// therefore the main dispatch queue) while waiting: unxip and WebKit both need that.
 func runBlocking<T>(_ work: @escaping @Sendable () async throws -> T) throws -> T {
     let box = ResultBox<T>()
-    let done = DispatchSemaphore(value: 0)
     Task.detached {
         box.result = await Result { try await work() }
-        done.signal()
+        DispatchQueue.main.async {} // wake the run loop
     }
-    done.wait()
+    while box.result == nil {
+        RunLoop.main.run(mode: .default, before: Date(timeIntervalSinceNow: 0.05))
+    }
     return try box.result!.get()
 }
 

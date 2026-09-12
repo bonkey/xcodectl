@@ -1,6 +1,15 @@
 {
   "pins" : [
     {
+      "identity" : "libfido2swift",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/kinoroy/LibFido2Swift",
+      "state" : {
+        "revision" : "ac8596a852e2b008c5902a521cf4d9c7f0f05fba",
+        "version" : "0.1.6"
+      }
+    },
+    {
       "identity" : "noora",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/tuist/Noora",
