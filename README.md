@@ -21,7 +21,7 @@ xcodectl session export | import   move the session to a runner
 ## Install
 
 ```
-mise use -g ubi:bonkey/xcodectl
+mise use -g github:bonkey/xcodectl
 # or
 brew install bonkey/tap/xcodectl
 # or from source

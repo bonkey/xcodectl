@@ -36,7 +36,7 @@ clean:
     rm -rf .build
 
 # Bump Version.swift (patch by default, or VER), tag, push, build universal, publish GitHub release.
-# mise (ubi:bonkey/xcodectl) and the brew formula resolve versions from GitHub releases.
+# mise (github:bonkey/xcodectl) and the brew formula resolve versions from GitHub releases.
 release VER="":
     #!/usr/bin/env bash
     set -euo pipefail

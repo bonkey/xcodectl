@@ -72,6 +72,6 @@ A hidden `xcodectl _download <url> <file>` exercises the downloader against any 
 
 `just release` bumps the patch version (or `just release 1.2.0`), commits, tags `v<ver>`, pushes,
 builds the universal binary, and creates the GitHub release with
-`xcodectl-<ver>-macos-universal.tar.gz` + `.sha256`. mise (`ubi:bonkey/xcodectl`) and the brew
+`xcodectl-<ver>-macos-universal.tar.gz` + `.sha256`. mise (`github:bonkey/xcodectl`) and the brew
 formula resolve versions from GitHub releases, so a bare tag is not a release. Requires a clean
 tree and `gh` logged in.
