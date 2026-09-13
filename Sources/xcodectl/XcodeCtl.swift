@@ -208,6 +208,9 @@ struct Install: AsyncParsableCommand {
     @Flag(help: "Run `select` afterwards (needs sudo).")
     var select = false
 
+    @Flag(help: "Skip installing the matching Command Line Tools (Software Update, needs sudo).")
+    var noClt = false
+
     func run() async throws {
         let releases = try await Releases.fetch()
         let release: Release
@@ -231,6 +234,9 @@ struct Install: AsyncParsableCommand {
 
         if !noApprove {
             try Installer.approve(xcode)
+        }
+        if !noClt {
+            try Installer.installCommandLineTools(for: release)
         }
         if select {
             try Installer.select(xcode)

@@ -4,6 +4,7 @@
 
 import Foundation
 import libunxip
+import Noora
 
 // MARK: - InstalledXcode
 
@@ -105,6 +106,15 @@ enum Installed {
 // MARK: - Installer
 
 enum Installer {
+    // MARK: Command Line Tools
+
+    /// Apple's receipt for the standalone Command Line Tools package; `PackageVersion` is "26.6.0.0.<build>".
+    static let cltReceipt =
+        "/Library/Apple/System/Library/Receipts/com.apple.pkg.CLTools_Executables.plist"
+
+    /// Software Update only lists Command Line Tools while this marker exists (same trick Homebrew uses).
+    static let cltOnDemandMarker = "/tmp/.com.apple.dt.CommandLineTools.installondemand.in-progress"
+
     /// Expands the XIP into a temp dir next to /Applications (same volume, so the final move is a rename).
     static func expand(xip: URL) async throws -> URL {
         let tmp = Paths.expandTmp
@@ -167,6 +177,48 @@ enum Installer {
 
     static func select(_ xcode: InstalledXcode) throws {
         try sudo(["/usr/bin/xcode-select", "-s", xcode.path.path])
+    }
+
+    /// Installed Command Line Tools version as "major.minor", or nil when none are installed.
+    static func installedCommandLineTools() -> String? {
+        guard let data = FileManager.default.contents(atPath: cltReceipt),
+              let plist = try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any],
+              let version = plist["PackageVersion"] as? String
+        else {
+            return nil
+        }
+        return version.split(separator: ".").prefix(2).joined(separator: ".")
+    }
+
+    /// Installs the Command Line Tools matching an Xcode release through Software Update (sudo).
+    /// Returns false, after a warning, when Software Update has no package for that version, so
+    /// `install` still succeeds: the Xcode itself is already in place.
+    @discardableResult
+    static func installCommandLineTools(for release: Release) throws -> Bool {
+        let wanted = (release.numberComponents + [0]).prefix(2).map(String.init).joined(separator: ".")
+        if installedCommandLineTools() == wanted {
+            ui.info(InfoAlert(stringLiteral: "Command Line Tools \(wanted) are already installed"))
+            return true
+        }
+        let label = "Command Line Tools for Xcode \(wanted)-\(wanted)"
+        FileManager.default.createFile(atPath: cltOnDemandMarker, contents: Data())
+        defer { try? FileManager.default.removeItem(atPath: cltOnDemandMarker) }
+        do {
+            try sudo(["/usr/sbin/softwareupdate", "--install", label])
+        } catch {
+            ui.warning(WarningAlert(stringLiteral:
+                "Software Update has no Command Line Tools \(wanted); Xcode is installed anyway. "
+                    + "See `softwareupdate --list` or https://developer.apple.com/download/all/"))
+            return false
+        }
+        guard installedCommandLineTools() == wanted else {
+            ui.warning(WarningAlert(stringLiteral:
+                "softwareupdate finished but the receipt still says Command Line Tools "
+                    + "\(installedCommandLineTools() ?? "none"); expected \(wanted)"))
+            return false
+        }
+        ui.success(SuccessAlert(stringLiteral: "Installed Command Line Tools \(wanted)"))
+        return true
     }
 
     static func remove(_ xcode: InstalledXcode) throws {

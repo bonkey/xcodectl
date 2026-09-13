@@ -8,7 +8,7 @@ session in your Keychain and does the rest.
 xcodectl login                     sign in to Apple Developer (once)
 xcodectl list [<regex>]            versions: latest major + newest beta major; regex searches all
 xcodectl list-installed            what is in /Applications, active one starred
-xcodectl install [<ver>] [--select] [--no-approve]
+xcodectl install [<ver>] [--select] [--no-approve] [--no-clt]
 xcodectl approve [<ver>]           license + first launch + developer mode (sudo); install does this by default
 xcodectl select [<ver>]            xcode-select (sudo)
 xcodectl remove <ver>
@@ -33,7 +33,8 @@ git clone https://github.com/bonkey/xcodectl && cd xcodectl && just install
 ```
 xcodectl login          # a window opens; sign in with your Apple ID and 2FA code
 xcodectl install 26.6   # downloads (16 connections), expands, moves to /Applications/Xcode-26.6.app,
-                        # then approves it (sudo: license, first-launch packages)
+                        # then approves it (sudo: license, first-launch packages) and installs
+                        # Command Line Tools 26.6 (sudo: softwareupdate)
 xcodectl select 26.6    # sudo: xcode-select
 ```
 
@@ -69,6 +70,11 @@ export again.
 - Download: 16 parallel HTTP range requests on URLSession into one preallocated file, resumable.
 - Expand: in-process [unxip](https://github.com/saagarjha/unxip).
 - `approve`: `xcodebuild -license accept`, `xcodebuild -runFirstLaunch`, `DevToolsSecurity -enable`.
+- Command Line Tools: `install` runs `sudo softwareupdate --install "Command Line Tools for Xcode
+  X.Y-X.Y"` for the Xcode's major.minor (skipped when the receipt in
+  `/Library/Apple/System/Library/Receipts` already says X.Y, or with `--no-clt`). Keeps Homebrew's
+  "A newer Command Line Tools release is available" quiet. When Software Update has no package for
+  that version (some betas), a warning is printed and the install still succeeds.
 - `remove`: deletes the app bundle. System packages, simulator runtimes and DerivedData are shared
   between Xcode versions and stay.
 
