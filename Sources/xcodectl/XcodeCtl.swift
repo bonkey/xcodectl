@@ -86,17 +86,44 @@ func printTable(_ rows: [[String]]) {
 }
 
 func releaseRows(_ releases: [Release]) -> [[String]] {
-    let installed = Installed.all()
-    let active = Installed.activePath()?.standardizedFileURL.path
+    releaseRows(
+        releases,
+        installed: Installed.all(),
+        active: Installed.activePath()?.standardizedFileURL.path)
+}
+
+func releaseRows(_ releases: [Release], installed: [InstalledXcode], active: String?) -> [[String]] {
+    let owners = statusOwners(releases, installed, active: active)
     var rows = [["VERSION", "BUILD", "RELEASED", "STATUS"]]
-    for r in releases {
+    for (index, r) in releases.enumerated() {
         var status = ""
-        if let hit = installed.first(where: { $0.build.lowercased() == r.build.lowercased() }) {
+        if let hit = owners[index] {
             status = hit.path.standardizedFileURL.path == active ? "* active" : "installed"
         }
         rows.append([r.display, r.build, r.dateString, status])
     }
     return rows
+}
+
+/// The installed app each row reports, by row index. A release candidate and its final release share
+/// a build, so the final row takes the app and the candidate row stays empty.
+private func statusOwners(
+    _ releases: [Release],
+    _ installed: [InstalledXcode],
+    active: String?)
+    -> [Int: InstalledXcode]
+{
+    var owners: [Int: InstalledXcode] = [:]
+    for xcode in installed {
+        let matching = releases.indices.filter { releases[$0].build.lowercased() == xcode.build.lowercased() }
+        guard let row = matching.first(where: { releases[$0].isFinal }) ?? matching.first else {
+            continue
+        }
+        if owners[row] == nil || xcode.path.standardizedFileURL.path == active {
+            owners[row] = xcode
+        }
+    }
+    return owners
 }
 
 // MARK: - Login
@@ -158,7 +185,7 @@ struct SessionCommand: AsyncParsableCommand {
 struct List: AsyncParsableCommand {
     static let configuration =
         CommandConfiguration(
-            abstract: "Available Xcode versions (latest major + newest beta major; regex searches everything).")
+            abstract: "Available Xcode versions (the two latest majors; regex searches everything).")
 
     @Argument(help: "Regex matched against version and build, e.g. '26\\.[45]' or '27.*beta'.")
     var pattern: String?
@@ -354,15 +381,16 @@ struct Remove: AsyncParsableCommand {
     var version: String
 
     func run() async throws {
-        let xcode = try await Installed.resolve(version)
-        let wasActive = Installed.isActive(xcode)
+        let path = try await target()
+        let name = path.lastPathComponent
+        let wasActive = Installed.isActive(path)
         try await ui.progressStep(
-            message: "Removing \(xcode.name)",
-            successMessage: "Removed \(xcode.name)",
+            message: "Removing \(name)",
+            successMessage: "Removed \(name)",
             errorMessage: "Remove failed",
             showSpinner: true)
         { _ in
-            try Installer.remove(xcode)
+            try Installer.remove(at: path)
         }
         guard wasActive else {
             return
@@ -374,6 +402,21 @@ struct Remove: AsyncParsableCommand {
         let next = isInteractive ? try pickInstalled("That was the active Xcode. Select which one now?") : remaining[0]
         try Installer.select(next)
         ui.success(SuccessAlert(stringLiteral: "Active: \(next.path.path)"))
+    }
+
+    /// The bundle to delete: an installed Xcode, or one a `remove` that failed part way through left
+    /// behind, which no longer has the version.plist that `Installed.resolve` reads.
+    private func target() async throws -> URL {
+        do {
+            return try await Installed.resolve(version).path
+        } catch {
+            guard let leftover = Installed.leftover(matching: version) else {
+                throw error
+            }
+            ui.info(InfoAlert(stringLiteral:
+                "\(leftover.lastPathComponent) is incomplete, from an earlier remove; deleting the rest"))
+            return leftover
+        }
     }
 }
 

@@ -152,12 +152,13 @@ enum Releases {
             .filter { $0.name == "Xcode" && $0.downloadURL != nil }
     }
 
-    /// Default `list` set: every version of the latest major with a final release, plus every
-    /// version of a newer major that only exists as beta/rc yet.
+    /// Default `list` set: every version of the highest major, plus every version of the highest
+    /// major below it that has a final release. While a new major is still beta or rc, that pairs it
+    /// with the current stable major; once it ships, the two latest stable majors are shown.
     static func defaultListing(_ releases: [Release]) -> [Release] {
-        let latestFinalMajor = releases.first(where: \.isFinal)?.major ?? 0
-        let newestMajor = releases.first?.major ?? 0
-        return releases.filter { $0.major == latestFinalMajor || $0.major == newestMajor }
+        let newestMajor = releases.map(\.major).max() ?? 0
+        let previousMajor = releases.filter(\.isFinal).map(\.major).filter { $0 < newestMajor }.max() ?? 0
+        return releases.filter { $0.major == newestMajor || $0.major == previousMajor }
     }
 
     static func search(_ releases: [Release], regex pattern: String) throws -> [Release] {

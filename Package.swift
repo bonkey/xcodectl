@@ -28,6 +28,10 @@ let package = Package(
                 .linkedFramework("Security"),
             ]
         ),
+        .testTarget(
+            name: "xcodectlTests",
+            dependencies: ["xcodectl"]
+        ),
     ],
     swiftLanguageVersions: [.v5]
 )

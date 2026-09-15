@@ -21,11 +21,11 @@ test:
 
 # Format check
 lint:
-    swiftformat --lint Sources
+    swiftformat --lint Sources Tests
 
 # Format in place
 fmt:
-    swiftformat Sources
+    swiftformat Sources Tests
 
 # Copy the release binary to ~/.local/bin
 install: release-build

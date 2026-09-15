@@ -6,7 +6,7 @@ session in your Keychain and does the rest.
 
 ```
 xcodectl login                     sign in to Apple Developer (once)
-xcodectl list [<regex>]            versions: latest major + newest beta major; regex searches all
+xcodectl list [<regex>]            versions of the two latest majors; regex searches all
 xcodectl list-installed            what is in /Applications, active one starred
 xcodectl install [<ver>] [--select] [--no-approve] [--no-clt]
 xcodectl approve [<ver>]           license + first launch + developer mode (sudo); install does this by default

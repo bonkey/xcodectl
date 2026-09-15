@@ -31,10 +31,8 @@ struct InstalledXcode: Equatable {
 enum Installed {
     /// Every /Applications/Xcode*.app with a readable version.plist, newest first.
     static func all() -> [InstalledXcode] {
-        let names = (try? FileManager.default.contentsOfDirectory(atPath: Paths.applications.path)) ?? []
-        return names
-            .filter { $0.hasPrefix("Xcode") && $0.hasSuffix(".app") }
-            .compactMap { read(Paths.applications.appendingPathComponent($0)) }
+        bundles()
+            .compactMap { read($0) }
             .sorted { a, b in
                 let x = a.version.split(separator: ".").map { Int($0) ?? 0 }
                 let y = b.version.split(separator: ".").map { Int($0) ?? 0 }
@@ -43,6 +41,37 @@ enum Installed {
                 }
                 return a.build > b.build
             }
+    }
+
+    /// Every /Applications/Xcode*.app, readable or not.
+    static func bundles() -> [URL] {
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: Paths.applications.path)) ?? []
+        return names
+            .filter { $0.hasPrefix("Xcode") && $0.hasSuffix(".app") }
+            .sorted()
+            .map { Paths.applications.appendingPathComponent($0) }
+    }
+
+    /// Bundles without a readable version.plist: what a `remove` that failed part way through leaves.
+    static func leftovers() -> [URL] {
+        bundles().filter { read($0) == nil }
+    }
+
+    /// The leading version digits of a bundle name: "Xcode-27.0.0-release.candidate.app" -> "27.0.0",
+    /// nil for a name without digits.
+    static func versionInName(_ app: URL) -> String? {
+        let name = app.deletingPathExtension().lastPathComponent
+        let digits = name.drop { !$0.isNumber }.prefix { $0.isNumber || $0 == "." }
+        return digits.isEmpty ? nil : String(digits)
+    }
+
+    /// A leftover bundle matching a typed version. The name is all there is to go by, because the
+    /// version.plist the other lookups read is gone; "latest" and a build number match nothing.
+    static func leftover(matching raw: String, in candidates: [URL] = leftovers()) -> URL? {
+        guard let query = try? Query(raw), !query.components.isEmpty else {
+            return nil
+        }
+        return candidates.first { versionInName($0).map(query.matchesNumber) ?? false }
     }
 
     static func read(_ app: URL) -> InstalledXcode? {
@@ -70,7 +99,11 @@ enum Installed {
     }
 
     static func isActive(_ xcode: InstalledXcode) -> Bool {
-        activePath()?.standardizedFileURL.path == xcode.path.standardizedFileURL.path
+        isActive(xcode.path)
+    }
+
+    static func isActive(_ app: URL) -> Bool {
+        activePath()?.standardizedFileURL.path == app.standardizedFileURL.path
     }
 
     static func find(build: String) -> InstalledXcode? {
@@ -221,11 +254,19 @@ enum Installer {
         return true
     }
 
-    static func remove(_ xcode: InstalledXcode) throws {
+    /// A delete that fails part way through leaves an incomplete bundle behind; `remove` finds it
+    /// again by name, so running the command a second time finishes the job.
+    static func remove(at app: URL) throws {
         do {
-            try FileManager.default.removeItem(at: xcode.path)
+            try FileManager.default.removeItem(at: app)
         } catch {
-            try sudo(["/bin/rm", "-rf", xcode.path.path])
+            do {
+                try sudo(["/bin/rm", "-rf", app.path])
+            } catch {
+                throw Fail(
+                    "cannot delete \(app.path): \(error.localizedDescription); "
+                        + "run `xcodectl remove` again once sudo works")
+            }
         }
     }
 }
