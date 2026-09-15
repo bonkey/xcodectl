@@ -4,21 +4,13 @@
 build:
     swift build
 
-# Universal release build; path printed by `just release-bin`.
-# One build per arch, then lipo: a single --arch arm64 --arch x86_64 build does not
-# find the static libraries of the LibFido2Swift xcframeworks (ld: -lcbor).
+# Apple Silicon release build; path printed by `just release-bin`.
 release-build:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    # One build with both arches yields a fat binary; SwiftPM puts every arch in the same bin dir,
-    # so two separate builds would overwrite each other.
-    swift build -c release --arch arm64 --arch x86_64
-    mkdir -p .build/universal
-    cp "$(swift build -c release --arch arm64 --arch x86_64 --show-bin-path)/xcodectl" .build/universal/xcodectl
-    lipo -info .build/universal/xcodectl
+    swift build -c release --arch arm64
 
+# Directory of the release binary
 release-bin:
-    @echo "{{justfile_directory()}}/.build/universal"
+    @swift build -c release --arch arm64 --show-bin-path
 
 # Run from source
 run *ARGS:
@@ -43,7 +35,7 @@ install: release-build
 clean:
     rm -rf .build
 
-# Bump Version.swift (patch by default, or VER), tag, push, build universal, publish GitHub release.
+# Bump Version.swift (patch by default, or VER), tag, push, build arm64, publish GitHub release.
 # mise (github:bonkey/xcodectl) and the brew formula resolve versions from GitHub releases.
 release VER="":
     #!/usr/bin/env bash
@@ -63,7 +55,7 @@ release VER="":
     just release-build
     git tag "v$ver" 2>/dev/null || [ "$(git rev-parse "v$ver")" = "$(git rev-parse HEAD)" ]
     git push && git push origin "v$ver"
-    asset="xcodectl-$ver-macos-universal.tar.gz"
+    asset="xcodectl-$ver-macos-arm64.tar.gz"
     tar -C "$(just release-bin)" -czf "$asset" xcodectl
     shasum -a 256 "$asset" > "$asset.sha256"
     gh release create "v$ver" "$asset" "$asset.sha256" --title "v$ver" --generate-notes

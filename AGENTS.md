@@ -46,7 +46,7 @@ Sources/xcodectl/
   in a detached task. Never block the main thread: WebKit and unxip (DispatchIO on the main queue)
   need it. Blocking library calls (libfido2 touch wait) go in `Task.detached`.
 - FIDO comes from the fork `bonkey/LibFido2Swift`, which ships libcbor/libcrypto as universal
-  static xcframeworks (see its STATIC.md), so the release binary is one self-contained file.
+  static xcframeworks (see its STATIC.md), so the release binary is one self-contained file. Apple Silicon only; no Intel build.
   Upstream kinoroy/LibFido2Swift ships dylibs with an invalid signature; do not switch back.
 - Nothing cookie-related ever touches disk. Session lives in the Keychain or in the
   `XCODECTL_SESSION` environment variable (base64 JSON), never in a file.
@@ -60,7 +60,7 @@ Sources/xcodectl/
 ```
 just build            # swift build
 just run list         # swift run xcodectl list
-just release-build    # universal binary; `just release-bin` prints its directory
+just release-build    # arm64 binary; `just release-bin` prints its directory
 just install          # copy it to ~/.local/bin
 just lint / just fmt  # swiftformat
 ```
@@ -73,7 +73,7 @@ A hidden `xcodectl _download <url> <file>` exercises the downloader against any 
 ## Releasing
 
 `just release` bumps the patch version (or `just release 1.2.0`), commits, tags `v<ver>`, pushes,
-builds the universal binary, and creates the GitHub release with
-`xcodectl-<ver>-macos-universal.tar.gz` + `.sha256`. mise (`github:bonkey/xcodectl`) and the brew
+builds the arm64 binary, and creates the GitHub release with
+`xcodectl-<ver>-macos-arm64.tar.gz` + `.sha256`. mise (`github:bonkey/xcodectl`) and the brew
 formula resolve versions from GitHub releases, so a bare tag is not a release. Requires a clean
 tree and `gh` logged in.
