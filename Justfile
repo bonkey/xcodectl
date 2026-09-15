@@ -4,13 +4,22 @@
 build:
     swift build
 
-# Universal release build; path printed by `just release-bin`
+# Universal release build; path printed by `just release-bin`.
+# One build per arch, then lipo: a single --arch arm64 --arch x86_64 build does not
+# find the static libraries of the LibFido2Swift xcframeworks (ld: -lcbor).
 release-build:
-    swift build -c release --arch arm64 --arch x86_64
+    #!/usr/bin/env bash
+    set -euo pipefail
+    swift build -c release --arch arm64
+    swift build -c release --arch x86_64
+    mkdir -p .build/universal
+    lipo -create -output .build/universal/xcodectl \
+        "$(swift build -c release --arch arm64 --show-bin-path)/xcodectl" \
+        "$(swift build -c release --arch x86_64 --show-bin-path)/xcodectl"
 
 # Directory of the universal release binary
 release-bin:
-    @swift build -c release --arch arm64 --arch x86_64 --show-bin-path
+    @echo "{{justfile_directory()}}/.build/universal"
 
 # Run from source
 run *ARGS:
@@ -52,11 +61,11 @@ release VER="":
         sed -i '' "s/^let version = \".*\"$/let version = \"$ver\"/" Sources/xcodectl/Version.swift
         git commit -qam "Release $ver"
     fi
-    swift build -c release --arch arm64 --arch x86_64
+    just release-build
     git tag "v$ver" 2>/dev/null || [ "$(git rev-parse "v$ver")" = "$(git rev-parse HEAD)" ]
     git push && git push origin "v$ver"
     asset="xcodectl-$ver-macos-universal.tar.gz"
-    tar -C "$(swift build -c release --arch arm64 --arch x86_64 --show-bin-path)" -czf "$asset" xcodectl
+    tar -C "$(just release-bin)" -czf "$asset" xcodectl
     shasum -a 256 "$asset" > "$asset.sha256"
     gh release create "v$ver" "$asset" "$asset.sha256" --title "v$ver" --generate-notes
     rm -f "$asset" "$asset.sha256"
