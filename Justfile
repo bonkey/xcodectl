@@ -30,7 +30,7 @@ test:
 
 # Format check
 lint:
-    swiftformat --lint Sources Tests
+    swiftformat Sources Tests --lint
 
 # Format in place
 fmt:

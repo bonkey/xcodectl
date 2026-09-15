@@ -28,8 +28,10 @@
 --enable isEmpty
 --enable marktypes
 --enable organizeDeclarations
---enable redundantProperty
---enable wrapConditionalBodies
+--enable redundantVariable
+--enable wrapIfStatementBodies
+--enable wrapGuardStatementBodies
+--enable wrapIfExpressionBodies
 --enable wrapEnumCases
 --enable wrapMultilineConditionalAssignment
 --enable wrapSwitchCases

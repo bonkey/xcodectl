@@ -123,6 +123,14 @@ struct Release: Decodable {
 // MARK: - Releases
 
 enum Releases {
+    enum Filter {
+        /// Finals plus the prereleases newer than the newest final (a beta cycle in progress).
+        case current
+        case stable
+        case beta
+        case all
+    }
+
     static let url = URL(string: "https://xcodereleases.com/data.json")!
 
     static var cacheFile: URL {
@@ -152,13 +160,29 @@ enum Releases {
             .filter { $0.name == "Xcode" && $0.downloadURL != nil }
     }
 
-    /// Default `list` set: every version of the highest major, plus every version of the highest
-    /// major below it that has a final release. While a new major is still beta or rc, that pairs it
-    /// with the current stable major; once it ships, the two latest stable majors are shown.
-    static func defaultListing(_ releases: [Release]) -> [Release] {
-        let newestMajor = releases.map(\.major).max() ?? 0
-        let previousMajor = releases.filter(\.isFinal).map(\.major).filter { $0 < newestMajor }.max() ?? 0
-        return releases.filter { $0.major == newestMajor || $0.major == previousMajor }
+    /// Default `list` set: the two latest majors with a final release. `.current` shows their finals
+    /// plus every prerelease newer than the newest final, so a running beta cycle appears and old
+    /// betas and rcs of shipped versions do not. `.stable` / `.beta` keep one kind only.
+    static func defaultListing(_ releases: [Release], _ kind: Filter = .current) -> [Release] {
+        let finalMajors = Set(releases.filter(\.isFinal).map(\.major))
+        let shownMajors = finalMajors.sorted(by: >).prefix(2)
+        let lowestMajor = shownMajors.last ?? 0
+        return filter(releases.filter { $0.major >= lowestMajor }, kind)
+    }
+
+    /// Applies a `Filter` to any release list (newest first, as data.json serves it).
+    static func filter(_ releases: [Release], _ kind: Filter) -> [Release] {
+        switch kind {
+        case .all:
+            return releases
+        case .stable:
+            return releases.filter(\.isFinal)
+        case .beta:
+            return releases.filter { !$0.isFinal }
+        case .current:
+            let newestFinal = releases.firstIndex(where: \.isFinal) ?? releases.endIndex
+            return releases.enumerated().filter { $0.offset < newestFinal || $0.element.isFinal }.map(\.element)
+        }
     }
 
     static func search(_ releases: [Release], regex pattern: String) throws -> [Release] {

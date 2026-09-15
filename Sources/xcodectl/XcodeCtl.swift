@@ -185,14 +185,36 @@ struct SessionCommand: AsyncParsableCommand {
 struct List: AsyncParsableCommand {
     static let configuration =
         CommandConfiguration(
-            abstract: "Available Xcode versions (the two latest majors; regex searches everything).")
+            abstract: "Available Xcode versions (the two latest majors; regex searches everything).",
+            discussion: """
+            Without a regex: finals of the two latest majors, plus any prerelease newer than the newest \
+            final. --stable keeps finals only, --beta keeps prereleases only. A regex searches every \
+            release; --stable / --beta narrow the matches.
+            """)
 
     @Argument(help: "Regex matched against version and build, e.g. '26\\.[45]' or '27.*beta'.")
     var pattern: String?
 
+    @Flag(help: "Only final releases.")
+    var stable = false
+
+    @Flag(help: "Only betas, rcs and other prereleases.")
+    var beta = false
+
+    func validate() throws {
+        guard !(stable && beta) else {
+            throw Fail("--stable and --beta exclude each other")
+        }
+    }
+
     func run() async throws {
         let all = try await Releases.fetch()
-        let shown = try pattern.map { try Releases.search(all, regex: $0) } ?? Releases.defaultListing(all)
+        let shown: [Release] =
+            if let pattern {
+                try Releases.filter(Releases.search(all, regex: pattern), stable ? .stable : beta ? .beta : .all)
+            } else {
+                Releases.defaultListing(all, stable ? .stable : beta ? .beta : .current)
+            }
         guard !shown.isEmpty else {
             throw Fail("nothing matches \(pattern ?? "")")
         }
