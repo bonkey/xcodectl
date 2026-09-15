@@ -10,14 +10,13 @@ build:
 release-build:
     #!/usr/bin/env bash
     set -euo pipefail
-    swift build -c release --arch arm64
-    swift build -c release --arch x86_64
+    # One build with both arches yields a fat binary; SwiftPM puts every arch in the same bin dir,
+    # so two separate builds would overwrite each other.
+    swift build -c release --arch arm64 --arch x86_64
     mkdir -p .build/universal
-    lipo -create -output .build/universal/xcodectl \
-        "$(swift build -c release --arch arm64 --show-bin-path)/xcodectl" \
-        "$(swift build -c release --arch x86_64 --show-bin-path)/xcodectl"
+    cp "$(swift build -c release --arch arm64 --arch x86_64 --show-bin-path)/xcodectl" .build/universal/xcodectl
+    lipo -info .build/universal/xcodectl
 
-# Directory of the universal release binary
 release-bin:
     @echo "{{justfile_directory()}}/.build/universal"
 
