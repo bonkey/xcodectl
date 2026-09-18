@@ -2,4 +2,4 @@
 // Copyright (c) 2026 Daniel Bauke
 //
 
-let version = "0.1.5"
+let version = "0.1.6"
