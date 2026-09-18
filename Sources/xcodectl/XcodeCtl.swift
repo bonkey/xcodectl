@@ -19,6 +19,7 @@ struct XcodeCtl: AsyncParsableCommand {
             List.self,
             ListInstalled.self,
             Install.self,
+            InstallClt.self,
             Approve.self,
             Select.self,
             Remove.self,
@@ -57,6 +58,38 @@ func resolveOrPick(_ version: String?, _ question: String) async throws -> Insta
         return try await Installed.resolve(version)
     }
     return try pickInstalled(question)
+}
+
+/// A release from a version query, or from a latest / latest beta picker when none is given.
+func resolveOrPickRelease(_ version: String?, _ question: String) async throws -> Release {
+    let releases = try await Releases.fetch()
+    guard let version else {
+        return try pickRelease(question, from: releases)
+    }
+    let (release, note) = try Query(version).resolve(in: releases)
+    if let note {
+        ui.info(InfoAlert(stringLiteral: note))
+    }
+    return release
+}
+
+func pickRelease(_ question: String, from releases: [Release]) throws -> Release {
+    let installed = Installed.all().map { $0.build.lowercased() }
+    func choice(_ r: Release, _ label: String) -> Choice<Release> {
+        let mark = installed.contains(r.build.lowercased()) ? "  (installed)" : ""
+        return Choice(description: "\(r.display)  \(r.build)  \(r.dateString)  \(label)\(mark)", value: r)
+    }
+    var choices: [Choice<Release>] = []
+    if let stable = releases.first(where: \.isFinal) {
+        choices.append(choice(stable, "latest"))
+    }
+    if let pre = releases.first(where: { !$0.isFinal }),
+       let stable = releases.first(where: \.isFinal),
+       pre.dateString > stable.dateString
+    {
+        choices.append(choice(pre, "latest beta"))
+    }
+    return try pick(question, from: choices)
 }
 
 func pickInstalled(_ question: String) throws -> InstalledXcode {
@@ -257,21 +290,11 @@ struct Install: AsyncParsableCommand {
     @Flag(help: "Run `select` afterwards (needs sudo).")
     var select = false
 
-    @Flag(help: "Skip installing the matching Command Line Tools (Software Update, needs sudo).")
+    @Flag(help: "Skip upgrading the Command Line Tools to this version (Software Update, needs sudo).")
     var noClt = false
 
     func run() async throws {
-        let releases = try await Releases.fetch()
-        let release: Release
-        if let version {
-            let (r, note) = try Query(version).resolve(in: releases)
-            if let note {
-                ui.info(InfoAlert(stringLiteral: note))
-            }
-            release = r
-        } else {
-            release = try pickRelease(releases)
-        }
+        let release = try await resolveOrPickRelease(version, "Which Xcode?")
 
         let xcode: InstalledXcode
         if let existing = Installed.find(build: release.build) {
@@ -285,33 +308,13 @@ struct Install: AsyncParsableCommand {
             try Installer.approve(xcode)
         }
         if !noClt {
-            try Installer.installCommandLineTools(for: release)
+            Installer.upgradeCommandLineTools(for: release)
         }
         if select {
             try Installer.select(xcode)
         } else {
             ui.info(InfoAlert(stringLiteral: "next: `xcodectl select \(release.display)` to make it the active Xcode"))
         }
-    }
-
-    private func pickRelease(_ releases: [Release]) throws -> Release {
-        let installed = Installed.all().map { $0.build.lowercased() }
-        var choices: [Choice<Release>] = []
-        if let stable = releases.first(where: \.isFinal) {
-            choices.append(choice(stable, "latest", installed))
-        }
-        if let pre = releases.first(where: { !$0.isFinal }),
-           let stable = releases.first(where: \.isFinal),
-           pre.dateString > stable.dateString
-        {
-            choices.append(choice(pre, "latest beta", installed))
-        }
-        return try pick("Which Xcode?", from: choices)
-    }
-
-    private func choice(_ r: Release, _ label: String, _ installed: [String]) -> Choice<Release> {
-        let mark = installed.contains(r.build.lowercased()) ? "  (installed)" : ""
-        return Choice(description: "\(r.display)  \(r.build)  \(r.dateString)  \(label)\(mark)", value: r)
     }
 
     private func install(_ release: Release) async throws -> InstalledXcode {
@@ -358,6 +361,22 @@ struct Install: AsyncParsableCommand {
         }
         ui.success(SuccessAlert(stringLiteral: "Installed Xcode \(release.display) at \(release.installPath.path)"))
         return xcode
+    }
+}
+
+// MARK: - InstallClt
+
+struct InstallClt: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "install-clt",
+        abstract: "Install only the Command Line Tools of an Xcode version (Software Update, sudo).")
+
+    @Argument(help: "Xcode version, same forms as `install`. Omit for a picker.")
+    var version: String?
+
+    func run() async throws {
+        let release = try await resolveOrPickRelease(version, "Command Line Tools of which Xcode?")
+        try Installer.installCommandLineTools(Installer.commandLineToolsVersion(for: release))
     }
 }
 

@@ -223,15 +223,25 @@ enum Installer {
         return version.split(separator: ".").prefix(2).joined(separator: ".")
     }
 
-    /// Installs the Command Line Tools matching an Xcode release through Software Update (sudo).
-    /// Returns false, after a warning, when Software Update has no package for that version, so
-    /// `install` still succeeds: the Xcode itself is already in place.
-    @discardableResult
-    static func installCommandLineTools(for release: Release) throws -> Bool {
-        let wanted = (release.numberComponents + [0]).prefix(2).map(String.init).joined(separator: ".")
+    /// "major.minor" of the Command Line Tools that ship alongside an Xcode release.
+    static func commandLineToolsVersion(for release: Release) -> String {
+        (release.numberComponents + [0]).prefix(2).map(String.init).joined(separator: ".")
+    }
+
+    /// `install` only moves the Command Line Tools forward, so an older Xcode installed side by
+    /// side leaves newer tools alone.
+    static func isCommandLineToolsUpgrade(installed: String?, wanted: String) -> Bool {
+        guard let installed else {
+            return true
+        }
+        return !versionAtLeast(installed, wanted)
+    }
+
+    /// Installs exactly this "major.minor" of the Command Line Tools through Software Update (sudo).
+    static func installCommandLineTools(_ wanted: String) throws {
         if installedCommandLineTools() == wanted {
             ui.info(InfoAlert(stringLiteral: "Command Line Tools \(wanted) are already installed"))
-            return true
+            return
         }
         let label = "Command Line Tools for Xcode \(wanted)-\(wanted)"
         FileManager.default.createFile(atPath: cltOnDemandMarker, contents: Data())
@@ -239,19 +249,36 @@ enum Installer {
         do {
             try sudo(["/usr/sbin/softwareupdate", "--install", label])
         } catch {
-            ui.warning(WarningAlert(stringLiteral:
-                "Software Update has no Command Line Tools \(wanted); Xcode is installed anyway. "
-                    + "See `softwareupdate --list` or https://developer.apple.com/download/all/"))
-            return false
+            throw Fail(
+                "Software Update could not install Command Line Tools \(wanted); "
+                    + "see `softwareupdate --list` or https://developer.apple.com/download/all/")
         }
         guard installedCommandLineTools() == wanted else {
-            ui.warning(WarningAlert(stringLiteral:
+            throw Fail(
                 "softwareupdate finished but the receipt still says Command Line Tools "
-                    + "\(installedCommandLineTools() ?? "none"); expected \(wanted)"))
-            return false
+                    + "\(installedCommandLineTools() ?? "none"); expected \(wanted)")
         }
         ui.success(SuccessAlert(stringLiteral: "Installed Command Line Tools \(wanted)"))
-        return true
+    }
+
+    /// The Command Line Tools step of `install`: upgrades only, and a failure is a warning because
+    /// the Xcode itself is already in place.
+    static func upgradeCommandLineTools(for release: Release) {
+        let wanted = commandLineToolsVersion(for: release)
+        let installed = installedCommandLineTools()
+        guard isCommandLineToolsUpgrade(installed: installed, wanted: wanted) else {
+            let current = installed ?? wanted
+            let note = current == wanted
+                ? "Command Line Tools \(wanted) are already installed"
+                : "keeping the newer Command Line Tools \(current); `xcodectl install-clt \(wanted)` replaces them"
+            ui.info(InfoAlert(stringLiteral: note))
+            return
+        }
+        do {
+            try installCommandLineTools(wanted)
+        } catch {
+            ui.warning(WarningAlert(stringLiteral: "\(error); Xcode is installed anyway"))
+        }
     }
 
     /// A delete that fails part way through leaves an incomplete bundle behind; `remove` finds it

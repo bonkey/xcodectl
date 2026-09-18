@@ -14,8 +14,9 @@ downloads page) the `apple.com` cookies go into the login Keychain as one generi
 session. Version metadata and direct XIP URLs come from `xcodereleases.com/data.json`.
 Download is 16 parallel `Range` requests on URLSession writing into one preallocated file
 (resumable via a `.state` sidecar). Expansion is in-process `libunxip`. `approve` (run by
-`install` unless `--no-approve`), the Command Line Tools step of `install` (`sudo softwareupdate
---install`, skipped with `--no-clt` or when the CLT receipt already matches), and `select` are the
+`install` unless `--no-approve`), the Command Line Tools install (`sudo softwareupdate --install`:
+`install-clt` for an exact version, and a step of `install` that only upgrades, skipped with
+`--no-clt` or when the CLT receipt is already at least that version), and `select` are the
 only places that call `sudo`.
 Security keys: WebKit refuses WebAuthn for apple.com in third-party apps, so a user script
 routes `navigator.credentials.get` to LibFido2Swift (libfido2 over USB) and returns the

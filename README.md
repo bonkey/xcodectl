@@ -9,6 +9,7 @@ xcodectl login                     sign in to Apple Developer (once)
 xcodectl list [<regex>]            two latest majors + running betas; --stable/--beta; regex searches all
 xcodectl list-installed            what is in /Applications, active one starred
 xcodectl install [<ver>] [--select] [--no-approve] [--no-clt]
+xcodectl install-clt [<ver>]       only the Command Line Tools of that Xcode version (sudo); no login needed
 xcodectl approve [<ver>]           license + first launch + developer mode (sudo); install does this by default
 xcodectl select [<ver>]            xcode-select (sudo)
 xcodectl remove <ver>
@@ -71,10 +72,14 @@ export again.
 - Expand: in-process [unxip](https://github.com/saagarjha/unxip).
 - `approve`: `xcodebuild -license accept`, `xcodebuild -runFirstLaunch`, `DevToolsSecurity -enable`.
 - Command Line Tools: `install` runs `sudo softwareupdate --install "Command Line Tools for Xcode
-  X.Y-X.Y"` for the Xcode's major.minor (skipped when the receipt in
-  `/Library/Apple/System/Library/Receipts` already says X.Y, or with `--no-clt`). Keeps Homebrew's
+  X.Y-X.Y"` for the Xcode's major.minor when that is newer than the receipt in
+  `/Library/Apple/System/Library/Receipts` (or there is none); skip it with `--no-clt`. It never
+  downgrades, so an older Xcode installed side by side leaves the tools alone. Keeps Homebrew's
   "A newer Command Line Tools release is available" quiet. When Software Update has no package for
   that version (some betas), a warning is printed and the install still succeeds.
+- `install-clt` runs the same Software Update install for exactly the version asked for, older
+  ones included, without touching Xcode or the Apple session. It fails when Software Update has
+  no package for that version.
 - `remove`: deletes the app bundle. System packages, simulator runtimes and DerivedData are shared
   between Xcode versions and stay.
 
