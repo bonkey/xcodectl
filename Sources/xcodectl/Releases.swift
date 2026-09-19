@@ -37,7 +37,12 @@ struct Release: Decodable {
             let architectures: [String]?
         }
 
+        struct Notes: Decodable {
+            let url: URL
+        }
+
         let download: Download?
+        let notes: Notes?
     }
 
     let name: String
@@ -56,6 +61,10 @@ struct Release: Decodable {
 
     var downloadURL: URL? {
         links?.download?.url
+    }
+
+    var notesURL: URL? {
+        links?.notes?.url
     }
 
     /// "rc" / "beta" / "gm" / "gmseed" / "dp" or nil for a final release.

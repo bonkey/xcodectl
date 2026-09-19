@@ -18,6 +18,7 @@ struct XcodeCtl: AsyncParsableCommand {
             SessionCommand.self,
             List.self,
             ListInstalled.self,
+            ReleaseNotesCommand.self,
             Install.self,
             InstallClt.self,
             Approve.self,
@@ -272,6 +273,91 @@ struct ListInstalled: AsyncParsableCommand {
             rows.append([x.version, x.build, x.path.path, Installed.isActive(x) ? "* active" : ""])
         }
         printTable(rows)
+    }
+}
+
+// MARK: - ReleaseNotesCommand
+
+struct ReleaseNotesCommand: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "release-notes",
+        abstract: "Show the release notes of an Xcode version, or what changed between two.",
+        discussion: """
+        With a second version: the list items and paragraphs its notes add (+) and drop (-) compared \
+        to the first. --abridged and --ask use the on-device Apple Intelligence model; nothing leaves \
+        this Mac.
+        """)
+
+    @Argument(help: "Xcode version, same forms as `install`. Omit for a picker.")
+    var version: String?
+
+    @Argument(help: "A second version to compare the first with.")
+    var other: String?
+
+    @Flag(help: "Print the Markdown as Apple serves it. Default: rendered for the terminal.")
+    var markdown = false
+
+    @Flag(help: "Print plain text, without markup or colors; the default when the output is not a terminal.")
+    var plain = false
+
+    @Flag(help: "Only what matters most, picked by the on-device model (macOS 26+, Apple Intelligence).")
+    var abridged = false
+
+    @Option(help: "Answer a question about the notes with the on-device model, e.g. \"which macOS is required?\"")
+    var ask: String?
+
+    func validate() throws {
+        guard [abridged, ask != nil, other != nil].filter(\.self).count <= 1 else {
+            throw Fail("--abridged, --ask and a second version exclude each other")
+        }
+        guard !(markdown && plain) else {
+            throw Fail("--markdown and --plain exclude each other")
+        }
+    }
+
+    func run() async throws {
+        let release = try await resolveOrPickRelease(version, "Release notes of which Xcode?")
+        let notes = try await ReleaseNotes.fetch(release)
+        if let other {
+            let newer = try await resolveOrPickRelease(other, "Compare with which Xcode?")
+            guard try ReleaseNotes.markdownURL(newer) != ReleaseNotes.markdownURL(release) else {
+                throw Fail("Xcode \(release.display) and \(newer.display) share one release notes page")
+            }
+            let changes = try await ReleaseNotes.diff(
+                old: ReleaseNotes.blocks(notes),
+                new: ReleaseNotes.blocks(ReleaseNotes.fetch(newer)))
+            guard let changes else {
+                throw Fail("the release notes of Xcode \(release.display) and \(newer.display) do not differ")
+            }
+            show("# Xcode \(release.display) → \(newer.display) release notes\n\n\(changes)", diff: true)
+        } else if let ask {
+            try await show(thinking("Asking the on-device model") { try await ReleaseNotes.answer(ask, from: notes) })
+        } else if abridged {
+            try await show(thinking("Summarizing with the on-device model") { try await ReleaseNotes.abridge(notes) })
+        } else {
+            show(notes)
+        }
+    }
+
+    private func show(_ text: String, diff: Bool = false) {
+        if markdown {
+            print(text)
+        } else if plain || isatty(STDOUT_FILENO) != 1 {
+            print(ReleaseNotes.plain(text))
+        } else {
+            print(ReleaseNotes.rendered(text, diff: diff, theme: .current()))
+        }
+    }
+
+    /// A spinner while the model works, on a terminal only, so piped output holds nothing but the result.
+    private func thinking(_ message: String, _ work: @escaping () async throws -> String) async throws -> String {
+        guard isInteractive else {
+            return try await work()
+        }
+        return try await ui
+            .progressStep(message: message, successMessage: nil, errorMessage: nil, showSpinner: true) { _ in
+                try await work()
+            }
     }
 }
 

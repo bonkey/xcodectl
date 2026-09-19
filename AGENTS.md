@@ -28,6 +28,7 @@ assertion into the requesting iframe.
 Sources/xcodectl/
   XcodeCtl.swift     commands, pickers, tables (Noora for TUI)
   Releases.swift     data.json model, version query parsing/matching, listing
+  ReleaseNotes.swift notes as Markdown (URL + ".md"), terminal rendering, plain text, diff of two, on-device summary and answers (only file importing FoundationModels)
   Session.swift      cookie model, Keychain, XCODECTL_SESSION, download-ticket refresh
   LoginWindow.swift  AppKit + WKWebView window, WebAuthn→libfido2 bridge (only file importing AppKit/WebKit)
   main.swift         entry point: NSApp.run() on main, command in a detached task
