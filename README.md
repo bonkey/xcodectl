@@ -22,11 +22,29 @@ xcodectl session export | import   move the session to a runner
 `<ver>` is forgiving: `26.1`, `27`, `27 rc`, `27-rc1`, `27 beta 3`, `27A266a`, `latest`,
 `latest-beta`. Omit it on `install`, `approve`, `select` for a picker.
 
+## List
+
+```
+$ xcodectl list
+VERSION     BUILD     RELEASED    STATUS     MACOS
+27.1-beta1  27A9269   2026-09-18  * active   ✓ 26.6 or later
+27.2-beta1  27B5019j  2026-09-16             ✓ 26.6 or later
+27.0        27A266a   2026-09-14  installed  ✓ 26.6 or later
+26.6        17F113    2026-06-25             ✗ 26.2–26.x
+26.5        17F42     2026-05-11             ✗ 26.2–26.x
+26.4.1      17E202    2026-04-16             ✗ 26.2–26.x
+26.4        17E192    2026-03-24             ✗ 26.2–26.x
+26.3        17C529    2026-02-26             ✗ 15.6–26.x
+...
+```
+
+MACOS is the range of macOS versions that Xcode runs on, behind `✓` when this Mac's macOS is in it
+and `✗` when it is too old or too new; here the Mac runs macOS 27.0. `--stable` and `--beta` narrow
+the list, a regex searches all versions: `xcodectl list '^16\.'`.
+
 ## Release notes
 
-No login needed. `--abridged` and `--ask` send the whole notes to a model in one request: OpenRouter
-or OpenAI with the API key in `OPENROUTER_API_KEY` or `OPENAI_API_KEY` (looked up in that order),
-or a server of your own, such as Ollama.
+No login needed.
 
 ```
 xcodectl release-notes 26.4                  the notes, rendered: colors, bold, italic, clickable links
@@ -38,13 +56,120 @@ xcodectl release-notes 27 --ask "which minimal macOS is required?"
 ```
 
 Under the title, the notes and `--abridged` give the macOS versions that Xcode runs on and whether
-this Mac's is one of them, as the MACOS column of `list` does:
+this Mac's is one of them, as the MACOS column of `list` does.
 
 ```
-$ xcodectl release-notes 26.6 | head -3
-XCODE 26.6 RELEASE NOTES
+$ xcodectl release-notes 27
 
-macOS: ✗ 26.2–26.x; this Mac runs 27.0.0
+Xcode 27 Release Notes
+
+macOS: ✓ 26.6 or later; this Mac runs 27.0.0
+
+Update your apps to use new features, and test your apps against API changes.
+
+Overview
+
+Xcode 27 includes Swift 6.4 and SDKs for iOS 27, iPadOS 27, tvOS 27, watchOS 27, macOS 27, and
+visionOS 27. Xcode 27 supports on-device debugging in iOS 17 and later, tvOS 17 and later, watchOS
+10 and later, and visionOS. Xcode 27 requires a Mac running macOS Tahoe 26.6 or later.
+
+See Xcode Support to learn more about compatible platforms and deployment targets.
+
+General
+
+Resolved Issues
+
+• Fixed: The scheme action toolbar button now treats ‘without building’ variants, obtained by
+  holding the Control key, as a one-shot operation and reverts to the standard action afterward.
+...
+```
+
+### Summary and questions
+
+`--abridged` and `--ask` send the whole notes to a model in one request: OpenRouter or OpenAI with
+the API key in `OPENROUTER_API_KEY` or `OPENAI_API_KEY` (looked up in that order), or a server of
+your own, such as Ollama. The default model is `gpt-5.6-luna` on both providers, with low reasoning
+effort. The spinner names the model, the provider and the key variable in use.
+
+`--abridged` takes five to twenty seconds. The model writes for a typical developer of apps in
+Swift: what to know before upgrading, known issues, new features, fixes and deprecations, grouped
+by area of Xcode. It keeps only what such a developer would act on and leaves out C++, linkers,
+Intel and the catalog of bundled versions. A name in backticks that the notes do not hold as
+written is listed under the summary, as models sometimes misspell one.
+
+```
+$ xcodectl release-notes 27 --abridged
+✔︎ Summarizing with openai/gpt-5.6-luna on OpenRouter (OPENROUTER_API_KEY) [7.8s]
+
+Xcode 27 Release Notes
+
+macOS: ✓ 26.6 or later; this Mac runs 27.0.0
+
+Before you upgrade
+
+• Requirements: Xcode 27 requires macOS Tahoe 26.6 or later.
+
+Known issues
+
+• App Store distribution: Apps using the Hardware-Checked Pointer Arithmetic Slice feature cannot be
+  uploaded with automatic signing on macOS Tahoe 26.6; distribute with macOS 27 and Xcode 27 or use
+  manual signing.
+• Swift compiler: A computed property with an init accessor and array or dictionary literal initial
+  value may no longer compile when the getter precedes the accessor; declare the init accessor
+  first.
+• Address Sanitizer: Address Sanitizer may fail to launch on 27.0 operating systems when building
+  with Xcode 26.4 or older; use Xcode 26.5 or later.
+• Device Hub: Parallelized simulator tests may not appear in Device Hub even though they are
+  running; disable parallelized test runs to watch UI tests.
+• Previews & Playgrounds: Standalone Swift files opened by double-clicking in Finder may fail to run
+  #Playground or #Preview blocks; use File > Open… or drag them onto the Dock icon.
+• Simulator: Some simulator runtimes may reappear after removal and a reboot.
+
+New
+
+• Testing:
+  • Test plans can set application-crash handling during UI tests to off, warning, failure, or fatal
+    failure.
+  • XCTest adds XCUIVoiceOverService for testing VoiceOver focus, spoken output, and navigation.
+  • Launch-test templates can run across every supported orientation, localization, and appearance
+    combination.
+• Previews:
+  • iOS previews support arbitrarily sized containers through the new Resizable Canvas mode.
+  • You can preview your UI in a different localization.
+  • Canvas can display a preview grid for each argument passed to #Preview(arguments:).
+• Device Hub: iPhone, iPad, and Apple Watch running iOS 27, iPadOS 27, or watchOS 27 can pair over a
+  network with “Pair Nearby Device…”.
+• Background Assets:
+  • Localized asset packs deliver the appropriate assets based on the user’s preferred languages.
+  • Xcode can serve asset packs to apps while debugging on devices through the Run scheme action’s
+    Background Asset Packs folder.
+• StoreKit Testing: StoreKit configuration files support testing In-App Purchase offer codes,
+  subscription bundles, and subscription suites locally.
+• Coding Intelligence:
+  • Agents can boot simulators, install and launch apps, synthesize touch events, and capture
+    screenshots to verify UI behavior.
+  • Planning is a first-class workflow with editable Markdown plans that you can review and approve
+    before implementation.
+
+Fixed
+
+• Previews: Previewing with an uninstalled runtime now shows a placeholder instead of silently
+  falling back to macOS.
+• Previews: Code inside #Preview now runs explicitly on the main actor, avoiding concurrency
+  warnings or runtime check failures when calling main-actor-isolated APIs.
+• Previews & Playgrounds: Previews and #Playground no longer repeatedly restart builds in large
+  workspaces after files are written into derived data.
+• Testing: The “Test Repetition Mode” setting now repeats individual Swift Testing test cases
+  instead of the entire test plan.
+• Testing: watchOS unit and UI tests now run on devices.
+• Device Hub: Simulator devices no longer disappear from Device Hub because of an
+  installation-package timing issue.
+
+Deprecated
+
+• On Demand Resources: On Demand Resources and the NSBundleResourceRequest API are deprecated; use
+  Background Assets instead.
+• Previews: PreviewProvider and its family of preview modifiers are deprecated.
 ```
 
 ```
@@ -52,16 +177,13 @@ $ xcodectl release-notes 27 --ask "which minimal macOS is required?"
 Xcode 27 requires a Mac running macOS Tahoe 26.6 or later.
 
 $ xcodectl release-notes 26.4.0 --ask "Are there known issues with Swift Testing?"
-The release notes for Xcode 26.4 list several known issues with Swift Testing: failures in retrying
-tests when continueAfterFailure is set to false, inability to attach UIImage instances to tests when
-testing a Mac Catalyst app, and potential crashes at launch on Apple silicon when using a Rosetta
-run destination.
+Yes. Xcode 26.4 lists three known Swift Testing issues: async XCTest methods with
+continueAfterFailure set to false can skip retries; UIImage attachments don’t work for Mac Catalyst
+tests (use UIImage.cgImage); and Swift Testing tests may crash at launch on Rosetta destinations
+when using Xcode for Apple silicon.
 ```
 
-`--abridged` takes five to twenty seconds. The model reads the whole notes and writes for a typical
-developer of apps in Swift: what to know before upgrading, known issues, new features, fixes and
-deprecations. It keeps only what such a developer would act on, however many points that is, and
-leaves out C++, linkers, Intel and the catalog of bundled versions.
+Treat answers and summaries as a pointer into the notes, not as the notes.
 
 ```
 --key-env MY_KEY               read the API key from another environment variable (goes to OpenAI
@@ -77,27 +199,6 @@ xcodectl release-notes 27 --abridged --base-url http://localhost:11434/v1 --mode
 
 That is Ollama. Long notes hold about 15k tokens, more than Ollama reads by default: raise its
 context, for example with `OLLAMA_CONTEXT_LENGTH=32768`.
-
-The default model is `gpt-5.6-luna` on both providers, with low reasoning effort. The spinner names the model, the provider and the key variable in use.
-
-```
-$ xcodectl release-notes 27 --abridged
-✔︎ Summarizing with openai/gpt-5.6-luna on OpenRouter (OPENROUTER_API_KEY) [8.4s]
-Xcode 27 Release Notes
-
-Before you upgrade
-• System requirement Xcode 27 requires macOS Tahoe 26.6 or later. On-device debugging supports
-  iOS 17+, tvOS 17+, watchOS 10+, and visionOS.
-• Interface Builder UIKit documents now use the `toolchain` compilation mode by default. If needed,
-  opt out with `IBC_COCOATOUCH_COMPILER_MODE = simulator`.
-...
-Known issues
-• Parallel testing: Devices running parallel simulator tests may be absent from Device Hub even while
-  tests run; disable parallelized test runs to watch UI tests.
-...
-```
-
-Treat answers and summaries as a pointer into the notes, not as the notes.
 
 ## Install
 
