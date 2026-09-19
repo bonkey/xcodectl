@@ -371,7 +371,8 @@ struct ReleaseNotesCommand: AsyncParsableCommand {
         } else if plain || isatty(STDOUT_FILENO) != 1 {
             print(ReleaseNotes.plain(text))
         } else {
-            print(ReleaseNotes.rendered(text, diff: diff, theme: .current()))
+            // A blank line sets the notes off from the messages above them.
+            print("\n" + ReleaseNotes.rendered(text, diff: diff, theme: .current()))
         }
     }
 
