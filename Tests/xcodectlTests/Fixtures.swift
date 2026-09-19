@@ -10,14 +10,15 @@ func makeRelease(
     _ number: String,
     _ build: String,
     _ date: (Int, Int, Int),
-    kind: Release.Kind = .init(release: true))
+    kind: Release.Kind = .init(release: true),
+    requires: String? = nil)
     -> Release
 {
     Release(
         name: "Xcode",
         version: .init(number: number, build: build, release: kind),
         date: .init(year: date.0, month: date.1, day: date.2),
-        requires: nil,
+        requires: requires,
         links: nil)
 }
 

@@ -242,6 +242,7 @@ struct List: AsyncParsableCommand {
     }
 
     func run() async throws {
+        async let requirements = SystemRequirements.fetch()
         let all = try await Releases.fetch()
         let shown: [Release] =
             if let pattern {
@@ -252,7 +253,8 @@ struct List: AsyncParsableCommand {
         guard !shown.isEmpty else {
             throw Fail("nothing matches \(pattern ?? "")")
         }
-        printTable(releaseRows(shown))
+        let marks = await Compatibility.column(shown, requirements: requirements)
+        printTable(zip(releaseRows(shown), marks).map { $0 + [$1] })
     }
 }
 
@@ -334,6 +336,7 @@ struct ReleaseNotesCommand: AsyncParsableCommand {
 
     func run() async throws {
         let release = try await resolveOrPickRelease(version, "Release notes of which Xcode?")
+        async let compatibility = other == nil && ask == nil ? Compatibility.line(for: release) : nil
         let notes = try await ReleaseNotes.fetch(release)
         if let other {
             let newer = try await resolveOrPickRelease(other, "Compare with which Xcode?")
@@ -356,16 +359,18 @@ struct ReleaseNotesCommand: AsyncParsableCommand {
                     try await ReleaseNotes.answer(ask, from: notes, with: backend)
                 })
             } else {
-                try await show(thinking("Summarizing with \(backend.name)") {
-                    try await ReleaseNotes.abridge(notes, with: backend)
-                })
+                try await show(
+                    thinking("Summarizing with \(backend.name)") { try await ReleaseNotes.abridge(notes, with: backend)
+                    },
+                    compatibility: compatibility)
             }
         } else {
-            show(notes)
+            await show(notes, compatibility: compatibility)
         }
     }
 
-    private func show(_ text: String, diff: Bool = false) {
+    private func show(_ text: String, diff: Bool = false, compatibility: String? = nil) {
+        let text = Compatibility.adding(compatibility, to: text)
         if markdown {
             print(text)
         } else if plain || isatty(STDOUT_FILENO) != 1 {

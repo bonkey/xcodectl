@@ -6,7 +6,8 @@ session in your Keychain and does the rest.
 
 ```
 xcodectl login                     sign in to Apple Developer (once)
-xcodectl list [<regex>]            two latest majors + running betas; --stable/--beta; regex searches all
+xcodectl list [<regex>]            two latest majors + running betas, and whether each runs on this Mac;
+                                   --stable/--beta; regex searches all
 xcodectl list-installed            what is in /Applications, active one starred
 xcodectl release-notes [<ver>] [<ver2>] [--markdown | --plain] [--abridged] [--ask "<question>"]
                                    notes rendered in the terminal; two versions: what changed; no login needed
@@ -34,6 +35,15 @@ xcodectl release-notes 26.4 --plain          plain text; also the default when p
 xcodectl release-notes 27 --abridged         what a developer of apps needs to know before upgrading
 xcodectl release-notes 26.3 26.4             what 26.4 adds (+) and drops (-) compared to 26.3
 xcodectl release-notes 27 --ask "which minimal macOS is required?"
+```
+
+Under the title, the notes and `--abridged` say whether that Xcode runs on this Mac, as `list` does:
+
+```
+$ xcodectl release-notes 26.6 | head -3
+XCODE 26.6 RELEASE NOTES
+
+On this Mac (macOS 27.0.0): ✗ only up to macOS 26.x
 ```
 
 ```
@@ -132,6 +142,15 @@ export again.
 ## How it works
 
 - Versions and direct download URLs: `https://xcodereleases.com/data.json`.
+- Runs on this Mac (`list`, `release-notes`): `✓ supported`, `✗ needs macOS 26.6` (this macOS is
+  too old for that Xcode) or `✗ only up to macOS 26.x` (that Xcode is too old for this macOS). The
+  oldest macOS is the release's `requires` in `data.json`, exact for each beta. The newest comes
+  from the "Supported macOS Versions" column of
+  `https://developer.apple.com/xcode/system-requirements/`: "26.x" covers every 26 release, "or
+  later" sets no limit. A release takes the row of its version, else of its major.minor (26.4 is
+  listed as 26.4.1); betas take the row of their version ("Xcode 27.1 beta", "Xcode 27" for the
+  27.0 betas). Versions the page does not list (before 14) get no mark. When the page cannot be
+  fetched, its cached copy stands in; without one, only "needs macOS" shows.
 - Auth: Apple's portal sets a long-lived login session in the window; the tool keeps only the
   `apple.com` cookies, in the Keychain. WebKit refuses WebAuthn for apple.com in third-party apps,
   so the page's `navigator.credentials.get` is routed to libfido2, which drives the security key.
@@ -164,4 +183,5 @@ export again.
 - `remove`: deletes the app bundle. System packages, simulator runtimes and DerivedData are shared
   between Xcode versions and stay.
 
-Files: `~/.xcodectl/cache/` (downloads in flight, cached version list). Nothing else.
+Files: `~/.xcodectl/cache/` (downloads in flight, cached version list and system requirements
+page). Nothing else.

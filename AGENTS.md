@@ -35,6 +35,7 @@ Sources/xcodectl/
   main.swift         entry point: NSApp.run() on main, command in a detached task
   Downloader.swift   parallel ranged download + resume
   Install.swift      installed scan, unxip, move, approve, Command Line Tools, select, remove
+  Requirements.swift Apple's system requirements page (newest macOS per Xcode), whether a release runs on this Mac
   Shell.swift        Fail error, paths, sudo(), small system helpers
   Version.swift      `let version = "x.y.z"`, bumped by `just release`
 ```
@@ -59,6 +60,9 @@ Sources/xcodectl/
 - Pickers only when stdin and stdout are a TTY; otherwise a missing argument is an error.
 - Installed Xcodes are matched by `Contents/version.plist` `ProductBuildVersion`, never by
   directory name, so apps installed by other tools resolve too.
+- Whether an Xcode runs on this Mac is extra: when Apple's system requirements page cannot be
+  fetched or parsed and no cached copy exists, `list` and `release-notes` show only what `data.json`
+  tells ("needs macOS") and never fail over it.
 
 ## Build, run, test
 
