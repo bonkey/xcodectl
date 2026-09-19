@@ -96,11 +96,28 @@ final class RequirementsTests: XCTestCase {
         XCTAssertEqual(compatibility("27.0", requires: "26.6", on: "27.0.0", page: ""), .unknown)
     }
 
-    func testTextNamesEachState() {
-        XCTAssertEqual(Compatibility.supported.text?.plain(), "✓ supported")
-        XCTAssertEqual(Compatibility.needsMacOS("26.6").text?.plain(), "✗ needs macOS 26.6")
-        XCTAssertEqual(Compatibility.onlyUpToMacOS("26.x").text?.plain(), "✗ only up to macOS 26.x")
-        XCTAssertNil(Compatibility.unknown.text)
+    func testTextMarksTheRangeOfMacOSVersions() {
+        XCTAssertEqual(Compatibility.supported.text(range: "26.6 or later").plain(), "✓ 26.6 or later")
+        XCTAssertEqual(Compatibility.needsMacOS("26.6").text(range: "26.6 or later").plain(), "✗ 26.6 or later")
+        XCTAssertEqual(Compatibility.onlyUpToMacOS("26.x").text(range: "26.2–26.x").plain(), "✗ 26.2–26.x")
+        XCTAssertEqual(Compatibility.unknown.text(range: "from 12.5").plain(), "from 12.5")
+    }
+
+    func testRangeRunsFromTheMinimumToTheNewestOnThePage() {
+        let rows = SystemRequirements.parse(page)
+        XCTAssertEqual(
+            Compatibility.range(of: makeRelease("26.6", "", (2026, 1, 1), requires: "26.2"), requirements: rows),
+            "26.2–26.x")
+        XCTAssertEqual(
+            Compatibility.range(of: makeRelease("27.0", "", (2026, 1, 1), requires: "26.6"), requirements: rows),
+            "26.6 or later")
+        XCTAssertEqual(
+            Compatibility.range(of: makeRelease("13.4.1", "", (2026, 1, 1), requires: "12.5"), requirements: rows),
+            "from 12.5")
+        XCTAssertEqual(
+            Compatibility.range(of: makeRelease("27.0", "", (2026, 1, 1), requires: "26.6"), requirements: []),
+            "from 26.6")
+        XCTAssertNil(Compatibility.range(of: makeRelease("27.0", "", (2026, 1, 1), requires: nil), requirements: rows))
     }
 
     func testAddingPutsTheLineUnderTheTitle() {

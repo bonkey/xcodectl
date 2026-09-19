@@ -37,13 +37,14 @@ xcodectl release-notes 26.3 26.4             what 26.4 adds (+) and drops (-) co
 xcodectl release-notes 27 --ask "which minimal macOS is required?"
 ```
 
-Under the title, the notes and `--abridged` say whether that Xcode runs on this Mac, as `list` does:
+Under the title, the notes and `--abridged` give the macOS versions that Xcode runs on and whether
+this Mac's is one of them, as the MACOS column of `list` does:
 
 ```
 $ xcodectl release-notes 26.6 | head -3
 XCODE 26.6 RELEASE NOTES
 
-On this Mac (macOS 27.0.0): ✗ only up to macOS 26.x
+macOS: ✗ 26.2–26.x; this Mac runs 27.0.0
 ```
 
 ```
@@ -142,15 +143,16 @@ export again.
 ## How it works
 
 - Versions and direct download URLs: `https://xcodereleases.com/data.json`.
-- Runs on this Mac (`list`, `release-notes`): `✓ supported`, `✗ needs macOS 26.6` (this macOS is
-  too old for that Xcode) or `✗ only up to macOS 26.x` (that Xcode is too old for this macOS). The
+- macOS versions (`list`, `release-notes`): the range an Xcode runs on, `26.2–26.x` or `26.6 or
+  later`, behind `✓` when this Mac's macOS is in it and `✗` when it is too old or too new. The
   oldest macOS is the release's `requires` in `data.json`, exact for each beta. The newest comes
   from the "Supported macOS Versions" column of
   `https://developer.apple.com/xcode/system-requirements/`: "26.x" covers every 26 release, "or
   later" sets no limit. A release takes the row of its version, else of its major.minor (26.4 is
   listed as 26.4.1); betas take the row of their version ("Xcode 27.1 beta", "Xcode 27" for the
-  27.0 betas). Versions the page does not list (before 14) get no mark. When the page cannot be
-  fetched, its cached copy stands in; without one, only "needs macOS" shows.
+  27.0 betas). Versions the page does not list (before 14) show `from 12.5`, without a mark. When
+  the page cannot be fetched, its cached copy stands in; without one, every range reads `from …`
+  and only a macOS that is too old gets its `✗`.
 - Auth: Apple's portal sets a long-lived login session in the window; the tool keeps only the
   `apple.com` cookies, in the Keychain. WebKit refuses WebAuthn for apple.com in third-party apps,
   so the page's `navigator.credentials.get` is routed to libfido2, which drives the security key.

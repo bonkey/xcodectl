@@ -134,36 +134,37 @@ enum Compatibility: Equatable {
         }
     }
 
-    /// "✓ supported", "✗ needs macOS 26.6" or "✗ only up to macOS 26.x"; nil when unknown.
-    var text: TerminalText? {
-        switch self {
-        case .supported:
-            "\(.success("✓")) supported"
-
-        case let .needsMacOS(version):
-            "\(.danger("✗")) needs macOS \(version)"
-
-        case let .onlyUpToMacOS(version):
-            "\(.danger("✗")) only up to macOS \(version)"
-
-        case .unknown:
-            nil
+    /// The macOS versions `release` runs on: "26.2–26.x", "26.6 or later", or "from 12.5" when
+    /// Apple's page has no row for it; nil when data.json names no minimum.
+    static func range(of release: Release, requirements: [SystemRequirements.Row]) -> String? {
+        guard let required = release.requires else {
+            return nil
         }
+        guard let row = SystemRequirements.row(for: release, in: requirements) else {
+            return "from \(required)"
+        }
+        return row.newestMacOS.map { "\(required)–\($0)" } ?? "\(required) or later"
     }
 
-    /// The `list` column for `releases` on this Mac: its heading, then a cell per release, empty when unknown.
+    /// The `list` column for `releases`: its heading, then a cell per release, empty without a minimum.
     static func column(_ releases: [Release], requirements: [SystemRequirements.Row]) -> [String] {
         let macOS = macOSVersion()
-        return ["ON MACOS \(macOS)"] + releases.map {
-            Compatibility($0, macOS: macOS, requirements: requirements).text.map(ui.format) ?? ""
+        return ["MACOS"] + releases.map { release in
+            range(of: release, requirements: requirements).map {
+                ui.format(Compatibility(release, macOS: macOS, requirements: requirements).text(range: $0))
+            } ?? ""
         }
     }
 
-    /// "**On this Mac (macOS 27.0.0):** ✓ supported", a paragraph for the notes of `release`; nil when unknown.
+    /// "**macOS:** ✗ 26.2–26.x; this Mac runs 27.0.0", a paragraph for the notes of `release`; nil
+    /// without a minimum.
     static func line(for release: Release) async -> String? {
         let macOS = macOSVersion()
-        return await Compatibility(release, macOS: macOS, requirements: SystemRequirements.fetch()).text
-            .map { "**On this Mac (macOS \(macOS)):** \($0.plain())" }
+        let requirements = await SystemRequirements.fetch()
+        return range(of: release, requirements: requirements).map {
+            let text = Compatibility(release, macOS: macOS, requirements: requirements).text(range: $0)
+            return "**macOS:** \(text.plain()); this Mac runs \(macOS)"
+        }
     }
 
     /// `markdown` with `line` as a paragraph under its title, or above everything when it has none.
@@ -185,5 +186,20 @@ enum Compatibility: Equatable {
         return versionAtLeast(
             limit.joined(separator: "."),
             macOS.split(separator: ".").prefix(limit.count).joined(separator: "."))
+    }
+
+    /// `range` behind "✓" when this macOS is in it and "✗" when not; bare when that is unknown.
+    func text(range: String) -> TerminalText {
+        switch self {
+        case .supported:
+            "\(.success("✓")) \(.raw(range))"
+
+        case .needsMacOS,
+             .onlyUpToMacOS:
+            "\(.danger("✗")) \(.raw(range))"
+
+        case .unknown:
+            "\(.raw(range))"
+        }
     }
 }

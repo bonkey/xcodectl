@@ -62,7 +62,7 @@ Sources/xcodectl/
   directory name, so apps installed by other tools resolve too.
 - Whether an Xcode runs on this Mac is extra: when Apple's system requirements page cannot be
   fetched or parsed and no cached copy exists, `list` and `release-notes` show only what `data.json`
-  tells ("needs macOS") and never fail over it.
+  tells (the oldest macOS) and never fail over it.
 
 ## Build, run, test
 
