@@ -28,7 +28,8 @@ assertion into the requesting iframe.
 Sources/xcodectl/
   XcodeCtl.swift     commands, pickers, tables (Noora for TUI)
   Releases.swift     data.json model, version query parsing/matching, listing
-  ReleaseNotes.swift notes as Markdown (URL + ".md"), terminal rendering, plain text, diff of two, on-device summary and answers (only file importing FoundationModels)
+  ReleaseNotes.swift notes as Markdown (URL + ".md"), terminal rendering, plain text, diff of two, model summary and answers from the whole notes (only file importing AnyLanguageModel)
+  HostedModel.swift  provider, base URL and API key from options and environment, default model
   Session.swift      cookie model, Keychain, XCODECTL_SESSION, download-ticket refresh
   LoginWindow.swift  AppKit + WKWebView window, WebAuthn→libfido2 bridge (only file importing AppKit/WebKit)
   main.swift         entry point: NSApp.run() on main, command in a detached task
@@ -40,7 +41,7 @@ Sources/xcodectl/
 
 ## Conventions
 
-- Swift 5 language mode, macOS 14+. Dependencies: swift-argument-parser, Noora, unxip, bonkey/LibFido2Swift. Do not add
+- Swift 5 language mode, macOS 14+. Dependencies: swift-argument-parser, Noora, unxip, bonkey/LibFido2Swift, huggingface/AnyLanguageModel (no traits). Do not add
   more without a reason that survives "could Foundation do this".
 - No external processes except `/usr/bin/sudo` (approve, CLT install, select, remove fallback). Networking is
   URLSession; XIP expansion is libunxip.
@@ -52,6 +53,8 @@ Sources/xcodectl/
   Upstream kinoroy/LibFido2Swift ships dylibs with an invalid signature; do not switch back.
 - Nothing cookie-related ever touches disk. Session lives in the Keychain or in the
   `XCODECTL_SESSION` environment variable (base64 JSON), never in a file.
+- Model API keys are read from the environment on each run and kept nowhere. `--abridged` and `--ask` send
+  the whole notes in one request; do not split them to fit a small model.
 - Errors: throw `Fail("one actionable line")`; ArgumentParser prints it and exits 1.
 - Pickers only when stdin and stdout are a TTY; otherwise a missing argument is an error.
 - Installed Xcodes are matched by `Contents/version.plist` `ProductBuildVersion`, never by

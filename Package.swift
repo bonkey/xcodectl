@@ -12,6 +12,7 @@ let package = Package(
         .package(url: "https://github.com/tuist/Noora", from: "0.57.0"),
         .package(url: "https://github.com/saagarjha/unxip", from: "3.2.0"),
         .package(url: "https://github.com/bonkey/LibFido2Swift", from: "0.2.0"),
+        .package(url: "https://github.com/huggingface/AnyLanguageModel", .upToNextMinor(from: "0.13.0")),
     ],
     targets: [
         .executableTarget(
@@ -21,6 +22,7 @@ let package = Package(
                 .product(name: "Noora", package: "Noora"),
                 .product(name: "libunxip", package: "unxip"),
                 .product(name: "LibFido2Swift", package: "LibFido2Swift"),
+                .product(name: "AnyLanguageModel", package: "AnyLanguageModel"),
             ],
             linkerSettings: [
                 .linkedFramework("AppKit"),

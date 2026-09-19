@@ -284,8 +284,8 @@ struct ReleaseNotesCommand: AsyncParsableCommand {
         abstract: "Show the release notes of an Xcode version, or what changed between two.",
         discussion: """
         With a second version: the list items and paragraphs its notes add (+) and drop (-) compared \
-        to the first. --abridged and --ask use the on-device Apple Intelligence model; nothing leaves \
-        this Mac.
+        to the first. --abridged and --ask send the notes to a model: OpenRouter or OpenAI with the key \
+        in OPENROUTER_API_KEY or OPENAI_API_KEY, or a server of your own with --base-url and --model.
         """)
 
     @Argument(help: "Xcode version, same forms as `install`. Omit for a picker.")
@@ -300,11 +300,25 @@ struct ReleaseNotesCommand: AsyncParsableCommand {
     @Flag(help: "Print plain text, without markup or colors; the default when the output is not a terminal.")
     var plain = false
 
-    @Flag(help: "Only what matters most, picked by the on-device model (macOS 26+, Apple Intelligence).")
+    @Flag(help: "A summary for a developer of apps, written by a model.")
     var abridged = false
 
-    @Option(help: "Answer a question about the notes with the on-device model, e.g. \"which macOS is required?\"")
+    @Option(help: "Answer a question about the notes with a model, e.g. \"which macOS is required?\"")
     var ask: String?
+
+    @Option(help: "Environment variable holding the API key. Default: OPENROUTER_API_KEY, then OPENAI_API_KEY.")
+    var keyEnv: String?
+
+    @Option(help: "API the key belongs to. Default: by the variable that is set, else openai.")
+    var provider: Provider?
+
+    @Option(
+        name: .customLong("base-url"),
+        help: "Another OpenAI-compatible API, e.g. Ollama at http://localhost:11434/v1; needs --model, not a key.")
+    var baseURL: String?
+
+    @Option(help: "Model id. Default: gpt-5.6-luna.")
+    var model: String?
 
     func validate() throws {
         guard [abridged, ask != nil, other != nil].filter(\.self).count <= 1 else {
@@ -312,6 +326,9 @@ struct ReleaseNotesCommand: AsyncParsableCommand {
         }
         guard !(markdown && plain) else {
             throw Fail("--markdown and --plain exclude each other")
+        }
+        guard abridged || ask != nil || (keyEnv == nil && provider == nil && baseURL == nil && model == nil) else {
+            throw Fail("--key-env, --provider, --base-url and --model need --abridged or --ask")
         }
     }
 
@@ -330,10 +347,19 @@ struct ReleaseNotesCommand: AsyncParsableCommand {
                 throw Fail("the release notes of Xcode \(release.display) and \(newer.display) do not differ")
             }
             show("# Xcode \(release.display) → \(newer.display) release notes\n\n\(changes)", diff: true)
-        } else if let ask {
-            try await show(thinking("Asking the on-device model") { try await ReleaseNotes.answer(ask, from: notes) })
-        } else if abridged {
-            try await show(thinking("Summarizing with the on-device model") { try await ReleaseNotes.abridge(notes) })
+        } else if abridged || ask != nil {
+            let backend = try ReleaseNotes.backend(HostedModel.resolve(
+                environment: ProcessInfo.processInfo.environment, keyEnv: keyEnv, provider: provider,
+                baseURL: baseURL, model: model))
+            if let ask {
+                try await show(thinking("Asking \(backend.name)") {
+                    try await ReleaseNotes.answer(ask, from: notes, with: backend)
+                })
+            } else {
+                try await show(thinking("Summarizing with \(backend.name)") {
+                    try await ReleaseNotes.abridge(notes, with: backend)
+                })
+            }
         } else {
             show(notes)
         }

@@ -61,12 +61,17 @@ final class ReleaseNotesTests: XCTestCase {
         XCTAssertNil(ReleaseNotes.Theme.isLight("garbage"))
     }
 
-    func testPackedJoinsNeighboursUpToTheLimit() {
-        XCTAssertEqual(ReleaseNotes.packed(["aaaa", "bbbb", "cccc", "dddddddddddd"], limit: 10), [
-            "aaaa\n\nbbbb",
-            "cccc",
-            "dddddddddddd",
-        ])
+    func testUnknownNamesAreTheCodeSpansTheNotesDoNotHold() {
+        let notes = "Opt out with the `IBC_COCOATOUCH_COMPILER_MODE` = `simulator` build setting. Use `#Preview`."
+        let summary = "Set `IBC_COCOATOUCH_COMPILER_MODE = simulator`, not `IBC_COCATOUCH_COMPILER_MODE`; use `#Preview`."
+        XCTAssertEqual(ReleaseNotes.unknownNames(in: summary, notes: notes), ["IBC_COCATOUCH_COMPILER_MODE"])
+    }
+
+    func testWithoutEmptyHeadingsKeepsHeadingsWithTextOrSubheadings() {
+        let summary = "## Before you upgrade\n\n- One.\n\n## Known issues\n\n## New\n\n### Testing\n\n- Two.\n\n## Deprecated\n"
+        XCTAssertEqual(
+            ReleaseNotes.withoutEmptyHeadings(summary),
+            "## Before you upgrade\n\n- One.\n\n## New\n\n### Testing\n\n- Two.")
     }
 
     func testBlocksKeepAnItemWithItsWorkaroundUnderItsHeadings() {
@@ -105,36 +110,6 @@ final class ReleaseNotesTests: XCTestCase {
     func testDiffOfEqualNotesIsNil() {
         let blocks = ReleaseNotes.blocks(ReleaseNotes.clean(served))
         XCTAssertNil(ReleaseNotes.diff(old: blocks, new: blocks))
-    }
-
-    func testChunksFollowSectionsAndSplitLongOnes() {
-        let blocks = ReleaseNotes.blocks(ReleaseNotes.clean(served))
-        let whole = ReleaseNotes.chunks(blocks)
-        XCTAssertEqual(whole.map(\.heading), [nil, "## Overview", "### Testing"])
-        XCTAssertTrue(whole[2].text.hasPrefix("#### Known Issues\n\n- Tests may crash"))
-        XCTAssertTrue(whole[2].text.hasSuffix("#### Resolved Issues\n\n- Fixed: a crash.  (3)"))
-
-        let split = ReleaseNotes.chunks(blocks, limit: 60)
-        XCTAssertEqual(split.map(\.heading), [nil, "## Overview", "### Testing", "### Testing", "### Testing"])
-        XCTAssertEqual(split[3].text, "#### Known Issues\n\n- Second issue.  (2)")
-    }
-
-    func testRelevantKeepsTheOverviewAndTheSectionsNamingTheQuestionsWords() {
-        typealias Chunk = ReleaseNotes.Chunk
-        let chunks = [
-            Chunk(heading: nil, text: "Update your apps."),
-            Chunk(heading: "## Overview", text: "Xcode 27.1 requires macOS 26.6."),
-            Chunk(heading: "### Simulator", text: "- Fixed: a hang while testing.  (1)"),
-            Chunk(heading: "### StoreKit", text: "- Fixed: autosave.  (2)"),
-            Chunk(heading: "### Testing", text: "- Tests may crash.  (3)"),
-        ]
-        XCTAssertEqual(
-            ReleaseNotes.relevant(chunks, to: "Known issues in testing?").map(\.heading),
-            [nil, "## Overview", "### Simulator", "### Testing"])
-        // The section named by the question wins the room that is left.
-        XCTAssertEqual(
-            ReleaseNotes.relevant(chunks, to: "Known issues in testing?", limit: 75).map(\.heading),
-            [nil, "## Overview", "### Testing"])
     }
 
     private typealias Block = ReleaseNotes.Block

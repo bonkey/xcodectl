@@ -2,11 +2,8 @@
 // Copyright (c) 2026 Daniel Bauke
 //
 
+import AnyLanguageModel
 import Foundation
-
-#if canImport(FoundationModels)
-    import FoundationModels
-#endif
 
 // MARK: - ReleaseNotes
 
@@ -14,12 +11,6 @@ enum ReleaseNotes {
     /// One list item or paragraph, with the `##` and deeper heading lines above it.
     struct Block: Equatable {
         let path: [String]
-        let text: String
-    }
-
-    /// Blocks of one `###` section that fit a single model request.
-    struct Chunk: Equatable {
-        let heading: String?
         let text: String
     }
 
@@ -110,9 +101,6 @@ enum ReleaseNotes {
             return reply.isEmpty ? nil : reply
         }
     }
-
-    /// Characters of notes per model request. The on-device model holds 4096 tokens, prompt and reply together.
-    static let chunkLimit = 6000
 
     /// Apple serves a documentation page as Markdown under the same URL plus ".md". Older notes are
     /// archived HTML or PDFs behind the login and have no such form.
@@ -261,103 +249,6 @@ enum ReleaseNotes {
         return lines.isEmpty ? nil : lines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    static func chunks(_ blocks: [Block], limit: Int = chunkLimit) -> [Chunk] {
-        var chunks: [Chunk] = []
-        var heading: String?
-        var lines: [String] = []
-        var shown: [String] = []
-        func flush() {
-            if !lines.isEmpty {
-                let text = lines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
-                chunks.append(Chunk(heading: heading, text: text))
-            }
-            lines = []
-            shown = []
-        }
-        for block in blocks {
-            let section = block.path.last { (headingLevel($0) ?? 0) <= 3 }
-            let below = block.path.filter { (headingLevel($0) ?? 0) > 3 }
-            if section != heading || lines.joined(separator: "\n").count + block.text.count > limit {
-                flush()
-                heading = section
-            }
-            lines += headings(of: below, after: shown) + [block.text, ""]
-            shown = below
-        }
-        flush()
-        return chunks
-    }
-
-    /// The chunks a question is answered from, in document order: everything above the first `###`
-    /// section, then the sections sharing the most words with the question, as many as fit `limit`.
-    static func relevant(_ chunks: [Chunk], to question: String, limit: Int = chunkLimit) -> [Chunk] {
-        // Five letters of a word match its other forms: "required" finds "requires".
-        let stems = Set(question.lowercased().split { !$0.isLetter && !$0.isNumber }.filter { $0.count > 3 }
-            .map { $0.prefix(5) })
-        func score(_ chunk: Chunk) -> Int {
-            guard headingLevel(chunk.heading ?? "") == 3 else {
-                return Int.max
-            }
-            /// A word in the section name outweighs words in its text, which many sections share.
-            func hits(_ text: String) -> Int {
-                stems.filter { text.lowercased().contains($0) }.count
-            }
-            return 3 * hits(chunk.heading ?? "") + hits(chunk.text)
-        }
-        var room = limit
-        var kept = Set<Int>()
-        for (index, chunk) in chunks.enumerated().sorted(by: { score($0.element) > score($1.element) })
-            where score(chunk) > 0 && chunk.text.count <= room
-        {
-            kept.insert(index)
-            room -= chunk.text.count
-        }
-        return kept.sorted().map { chunks[$0] }
-    }
-
-    /// Joins neighbouring pieces into texts of at most `limit` characters; a longer piece stays alone.
-    static func packed(_ pieces: [String], limit: Int = chunkLimit) -> [String] {
-        pieces.reduce(into: [String]()) { texts, piece in
-            if let last = texts.last, last.count + piece.count + 2 <= limit {
-                texts[texts.count - 1] = last + "\n\n" + piece
-            } else {
-                texts.append(piece)
-            }
-        }
-    }
-
-    /// Markdown of the title, the overview as it is, and what the on-device model rates highest in
-    /// the sections.
-    static func abridge(_ markdown: String) async throws -> String {
-        #if canImport(FoundationModels)
-            if #available(macOS 26.0, *) {
-                try requireModel()
-                let all = chunks(blocks(markdown), limit: chunkLimit / 2)
-                let overview = all.filter { headingLevel($0.heading ?? "") == 2 }.map(\.text)
-                let sections = all.filter { headingLevel($0.heading ?? "") == 3 }
-                    .map { [$0.heading, $0.text].compactMap(\.self).joined(separator: "\n\n") }
-                let points = try await mostImportant(sections.isEmpty ? overview : sections).map { "- \($0)" }
-                return ([title(markdown)].compactMap(\.self) + overview
-                    + ["## What matters most", points.joined(separator: "\n")])
-                    .joined(separator: "\n\n")
-            }
-        #endif
-        throw Fail(needsModel)
-    }
-
-    /// The on-device model's answer to a question, from the parts of the notes that mention its words.
-    static func answer(_ question: String, from markdown: String) async throws -> String {
-        #if canImport(FoundationModels)
-            if #available(macOS 26.0, *) {
-                try requireModel()
-                return try await answerOnDevice(question, from: markdown)
-            }
-        #endif
-        throw Fail(needsModel)
-    }
-
-    private static let needsModel = "--abridged and --ask need macOS 26 or later with Apple Intelligence"
-
     /// Links inside the notes are relative to the documentation site.
     private static let site = URL(string: "https://developer.apple.com")
 
@@ -397,97 +288,176 @@ enum ReleaseNotes {
     }
 }
 
-#if canImport(FoundationModels)
-    @available(macOS 26.0, *)
-    extension ReleaseNotes {
-        @Generable
-        struct Point {
-            @Guide(
-                description: """
-                5 requirement or breaking change, 4 deprecation or known issue, 3 major new feature, \
-                2 minor feature, 1 routine fix
-                """,
-                .range(1 ... 5))
-            var importance: Int
+// MARK: - Model
 
-            @Guide(description: "The area of Xcode, then what changed, in at most 25 words")
-            var text: String
+extension ReleaseNotes {
+    /// The model behind --abridged and --ask.
+    struct Backend {
+        /// What messages call the model.
+        let name: String
+        let model: any LanguageModel
+        let options: GenerationOptions
+    }
+
+    private static let summaryInstructions = """
+    You write the summary of the release notes of one Xcode version. In one minute the reader wants \
+    to know whether to upgrade and what will affect daily work.
+
+    The reader is a typical developer of apps for iOS, macOS and the other Apple platforms: writes \
+    Swift with SwiftUI or UIKit, uses Swift packages, builds with Xcode's default settings, debugs \
+    and tests on simulators and devices, and ships through the App Store. The reader works on an \
+    Apple silicon Mac and keeps macOS reasonably current.
+
+    The message holds the complete release notes as Markdown. They list new features, known issues, \
+    resolved issues and deprecations by area of Xcode.
+
+    Test every candidate bullet with one question: would this reader do or decide something \
+    differently this month because of it? Keep the bullet only when the answer is clearly yes. \
+    Rank what is left by how many such readers it affects, then by how badly.
+
+    Leave out, however severe the notes make them sound:
+    - C, C++ and Objective-C++: the C++ standard library, Clang, module maps, Swift and C++ interoperability.
+    - Linkers, compiler and linker flags, custom toolchains, build system internals.
+    - Changes in how Xcode does its work inside, such as a new compilation mode, cache or scanner, \
+    when projects keep building and the reader has nothing to do. An opt-out setting does not make \
+    such a change worth a bullet.
+    - Intel Macs, x86_64, Rosetta, Universal binaries. That transition ended years ago and is not news.
+    - DriverKit, kernel extensions, Metal and game engine internals, other niche frameworks.
+    - Command line tools and their output formats, unless most app developers run them by hand.
+    - Fixes to problems few readers met, and anything the reader cannot act on.
+    - Versions of bundled SDKs, compilers and tools. Give a version number only where the reader must act on it.
+
+    Reply in Markdown with these headings, in this order, and nothing before or after them:
+
+    ## Before you upgrade
+    Only what can stop this reader from upgrading or needs a decision first: the macOS this Xcode \
+    requires, the OS versions of devices and simulators it stops supporting, and changed defaults \
+    that break the build of a typical app project or silently change its results: what gets \
+    localized, tested, signed or shipped. Often this is the requirements bullet alone. Not \
+    deprecations, not new features, not changed defaults where everything keeps working as before.
+    ## Known issues
+    Open problems in everyday work: building, signing, debugging, previews, simulators, devices, \
+    testing, Swift packages, the editor. Give the workaround when the notes have one.
+    ## New
+    Features this reader would change habits for.
+    ## Fixed
+    Resolved issues that got in the way of everyday work in earlier versions, the reason to take a \
+    bug fix release.
+    ## Deprecated
+    Swift and Apple framework APIs and Xcode features this reader is likely to use today and has to \
+    migrate from.
+
+    The descriptions under the headings above are for you; do not repeat them. When nothing passes \
+    under a heading, write the heading alone, with no bullet and no remark such as "None".
+
+    Group the changes under a heading by area of Xcode, the most important area first:
+    - An area with one change is one bullet: the area in bold, a colon, then the change.
+    - An area with several changes is a bullet with only the area in bold, and under it one \
+    bullet for each change, indented by two spaces. Coding Intelligence, Previews, Device Hub and \
+    Testing often have several.
+    An area appears once under a heading: a second bullet that starts with the same area is an \
+    error. The form is:
+
+    - **Simulator:** The one change of this area.
+    - **Previews:**
+      - The first change of this area.
+      - The second change of this area.
+
+    A heading holds at most six areas and an area at most four changes; when more pass the test, \
+    keep those that affect the most readers. These are limits and not numbers to reach: a summary \
+    is not a catalog, and a change that does not clearly pass the test is left out.
+
+    Each change is one sentence of at most 30 words that says what changed. Add what to do about it \
+    only when the notes say so, as a workaround, a setting or a replacement; never advice of your \
+    own. One bullet holds one change; do not pack a list of fixes or features into it. Write the \
+    names of APIs, tools, settings and flags as the notes do, letter for letter, in backticks. \
+    Every statement must be in the notes: when unsure that the notes say it, leave it out. Do not \
+    guess at causes or consequences.
+    """
+
+    private static let answerInstructions = """
+    You answer a question about one Xcode version from its complete release notes, for a developer \
+    of apps for Apple platforms. Use only facts from the notes and quote version numbers exactly. \
+    Answer in one to three sentences. If the notes hold nothing about the question, say that the \
+    release notes do not cover it.
+    """
+
+    /// The model of `hosted`.
+    static func backend(_ hosted: HostedModel) -> Backend {
+        let name = hosted.model ?? hosted.defaultModel
+        var fields: [String: JSONValue] = [:]
+        // A little reasoning files the changes under the right headings; more only takes longer, and
+        // some models reason for minutes unless told otherwise. OpenRouter drops the field for a
+        // model without reasoning; OpenAI rejects it there, so only its default model gets it.
+        if hosted.provider == .openrouter, hosted.baseURL == hosted.provider.api.baseURL {
+            fields["reasoning"] = ["effort": "low"]
+        } else if hosted.model == nil {
+            fields["reasoning_effort"] = "low"
         }
+        var options = GenerationOptions()
+        options[custom: OpenAILanguageModel.self] = .init(extraBody: fields)
+        return Backend(
+            name: ([name, "on", hosted.place] + [hosted.keyVariable.map { "(\($0))" }].compactMap(\.self))
+                .joined(separator: " "),
+            model: OpenAILanguageModel(baseURL: hosted.baseURL, apiKey: hosted.apiKey, model: name),
+            options: options)
+    }
 
-        @Generable
-        struct Digest {
-            @Guide(description: "The changes that matter most, none repeated", .maximumCount(3))
-            var points: [Point]
-        }
+    /// Markdown of the title and the model's summary of the whole notes.
+    static func abridge(_ markdown: String, with backend: Backend) async throws -> String {
+        let summary = try await reply(to: markdown, instructions: summaryInstructions, with: backend, or: "summary")
+        let misspelled = unknownNames(in: summary, notes: markdown).map { "`\($0)`" }.joined(separator: ", ")
+        let warning = misspelled
+            .isEmpty ? [] : ["**Check against the notes:** they do not hold \(misspelled) as written."]
+        return ([title(markdown)].compactMap(\.self) + [withoutEmptyHeadings(summary)] + warning)
+            .joined(separator: "\n\n")
+    }
 
-        private static let instructions = """
-        You extract the changes that matter from a part of the Xcode release notes, for a developer \
-        who decides whether to upgrade. Keep API, tool and setting names and version numbers. Use only \
-        facts from the text.
-        """
-
-        private static let answerInstructions = """
-        You answer a question about one Xcode version from an excerpt of its release notes. Use only \
-        facts from the excerpt and quote version numbers exactly. Answer in one to three sentences. \
-        If the excerpt holds nothing about the question, say that the release notes do not cover it.
-        """
-
-        private static func requireModel() throws {
-            guard case let .unavailable(reason) = SystemLanguageModel.default.availability else {
-                return
-            }
-            switch reason {
-            case .deviceNotEligible:
-                throw Fail("this Mac does not support Apple Intelligence")
-
-            case .appleIntelligenceNotEnabled:
-                throw Fail("Apple Intelligence is off: turn it on in System Settings")
-
-            case .modelNotReady:
-                throw Fail("the Apple Intelligence model is not downloaded yet; try again later")
-
-            @unknown default:
-                throw Fail("the Apple Intelligence model is not available")
-            }
-        }
-
-        private static func answerOnDevice(_ question: String, from markdown: String) async throws -> String {
-            // Small chunks, so that several sections fit one request.
-            let excerpt = relevant(chunks(blocks(markdown), limit: chunkLimit / 4), to: question)
-                .map { [$0.heading, $0.text].compactMap(\.self).joined(separator: "\n\n") }
-            // The question stands on both sides of the excerpt; the small model loses it otherwise.
-            let prompt = (["Question: \(question)", title(markdown) ?? ""] + excerpt + ["Question: \(question)"])
-                .joined(separator: "\n\n")
-            do {
-                let session = LanguageModelSession(instructions: answerInstructions)
-                let reply = try await session.respond(to: prompt, options: GenerationOptions(samplingMode: .greedy))
-                return reply.content.trimmingCharacters(in: .whitespacesAndNewlines)
-            } catch {
-                throw Fail("the on-device model gave no answer: \(error.localizedDescription)")
-            }
-        }
-
-        /// The model names and rates up to three changes in each part of the notes; the highest rated
-        /// ones, in the order of the notes, make the summary. It rates a short text far better than it
-        /// picks from a long list.
-        private static func mostImportant(_ pieces: [String], count: Int = 10) async throws -> [String] {
-            var points: [Point] = []
-            for text in packed(pieces, limit: chunkLimit / 2) {
-                let session = LanguageModelSession(instructions: instructions)
-                // The model sometimes runs on for minutes; a capped reply fails fast and its part is skipped.
-                let reply = try? await session.respond(
-                    to: text,
-                    generating: Digest.self,
-                    options: GenerationOptions(samplingMode: .greedy, maximumResponseTokens: 500))
-                points += reply?.content.points.filter { new in !points.contains { $0.text == new.text } } ?? []
-            }
-            guard !points.isEmpty else {
-                throw Fail("the on-device model gave no summary")
-            }
-            let top = points.enumerated()
-                .sorted { ($0.element.importance, $1.offset) > ($1.element.importance, $0.offset) }
-                .prefix(count)
-            return top.sorted { $0.offset < $1.offset }.map(\.element.text)
+    /// The code spans of a summary with a word the notes do not hold. A model sometimes misspells
+    /// the name of a setting or an API.
+    static func unknownNames(in summary: String, notes: String) -> [String] {
+        let known = notes.replacingOccurrences(of: "`", with: "")
+        return summary.matches(of: #/`([^`]+)`/#).map { String($0.1) }.filter { name in
+            name.split { $0.isWhitespace || $0 == "=" }.contains { $0.count > 3 && !known.contains($0) }
         }
     }
-#endif
+
+    /// Markdown without the headings that have nothing under them. Models print the headings they
+    /// were given even when told to leave out the empty ones.
+    static func withoutEmptyHeadings(_ markdown: String) -> String {
+        var kept: [String] = []
+        for line in markdown.components(separatedBy: "\n").reversed() {
+            let next = kept.first { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+            if let level = headingLevel(line), next.map({ (headingLevel($0) ?? 7) <= level }) ?? true {
+                kept = Array(kept.drop { $0.trimmingCharacters(in: .whitespaces).isEmpty })
+                continue
+            }
+            kept.insert(line, at: 0)
+        }
+        return kept.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// The model's answer to a question, from the whole notes.
+    static func answer(_ question: String, from markdown: String, with backend: Backend) async throws -> String {
+        // The question stands on both sides of the notes, so that it is not lost behind them.
+        try await reply(
+            to: ["Question: \(question)", markdown, "Question: \(question)"].joined(separator: "\n\n"),
+            instructions: answerInstructions, with: backend, or: "answer")
+    }
+
+    private static func reply(
+        to prompt: String, instructions: String, with backend: Backend, or missing: String) async throws
+        -> String
+    {
+        do {
+            let session = LanguageModelSession(model: backend.model, instructions: instructions)
+            return try await session.respond(to: prompt, options: backend.options).content
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+        } catch {
+            // The errors of a hosted model are not localized; they describe themselves, with the JSON reply of the API.
+            let reason = ((error as? LocalizedError)?.errorDescription ?? "\(error)")
+                .split(whereSeparator: \.isWhitespace).joined(separator: " ")
+            throw Fail("\(backend.name) gave no \(missing): \(reason)")
+        }
+    }
+}

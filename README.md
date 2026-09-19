@@ -23,14 +23,15 @@ xcodectl session export | import   move the session to a runner
 
 ## Release notes
 
-No login needed. `--abridged` and `--ask` run on the on-device Apple Intelligence model (macOS 26+);
-nothing leaves the Mac.
+No login needed. `--abridged` and `--ask` send the whole notes to a model in one request: OpenRouter
+or OpenAI with the API key in `OPENROUTER_API_KEY` or `OPENAI_API_KEY` (looked up in that order),
+or a server of your own, such as Ollama.
 
 ```
 xcodectl release-notes 26.4                  the notes, rendered: colors, bold, italic, clickable links
 xcodectl release-notes 26.4 --markdown       the Markdown Apple serves
 xcodectl release-notes 26.4 --plain          plain text; also the default when piped
-xcodectl release-notes 27 --abridged         the overview and the ten changes that matter most
+xcodectl release-notes 27 --abridged         what a developer of apps needs to know before upgrading
 xcodectl release-notes 26.3 26.4             what 26.4 adds (+) and drops (-) compared to 26.3
 xcodectl release-notes 27 --ask "which minimal macOS is required?"
 ```
@@ -46,18 +47,46 @@ testing a Mac Catalyst app, and potential crashes at launch on Apple silicon whe
 run destination.
 ```
 
-`--abridged` takes about a minute on long notes: the model names and rates up to three changes in
-each part, and the ten highest rated ones make the summary.
+`--abridged` takes five to twenty seconds. The model reads the whole notes and writes for a typical
+developer of apps in Swift: what to know before upgrading, known issues, new features, fixes and
+deprecations. It keeps only what such a developer would act on, however many points that is, and
+leaves out C++, linkers, Intel and the catalog of bundled versions.
+
+```
+--key-env MY_KEY               read the API key from another environment variable (goes to OpenAI
+                               unless --provider says otherwise)
+--provider openai|openrouter   use this provider's key although the other one is set too
+--model <id>                   use this model
+--base-url <url> --model <id>  another OpenAI-compatible API; needs no key
+```
+
+```
+xcodectl release-notes 27 --abridged --base-url http://localhost:11434/v1 --model <model>
+```
+
+That is Ollama. Long notes hold about 15k tokens, more than Ollama reads by default: raise its
+context, for example with `OLLAMA_CONTEXT_LENGTH=32768`.
+
+The default model is `gpt-5.6-luna` on both providers, with low reasoning effort. The spinner names the model, the provider and the key variable in use.
 
 ```
 $ xcodectl release-notes 27 --abridged
+✔︎ Summarizing with openai/gpt-5.6-luna on OpenRouter (OPENROUTER_API_KEY) [8.4s]
+Xcode 27 Release Notes
+
+Before you upgrade
+• System requirement Xcode 27 requires macOS Tahoe 26.6 or later. On-device debugging supports
+  iOS 17+, tvOS 17+, watchOS 10+, and visionOS.
+• Interface Builder UIKit documents now use the `toolchain` compilation mode by default. If needed,
+  opt out with `IBC_COCOATOUCH_COMPILER_MODE = simulator`.
 ...
-- Instruments now requires target iOS, watchOS and tvOS devices with versions of at least iOS 17, watchOS 10, or tvOS 17.
-- Xcode 27 will only install and run on Apple silicon Macs.
-- Removed `ld64` linker and `-ld_classic` option; linking now incompatible
+Known issues
+• Parallel testing: Devices running parallel simulator tests may be absent from Device Hub even while
+  tests run; disable parallelized test runs to watch UI tests.
+...
 ```
 
-The model is small: treat its answers and summaries as a pointer into the notes, not as the notes.
+Treat answers and summaries as a pointer into the notes, not as the notes.
 
 ## Install
 
@@ -128,10 +157,9 @@ export again.
   color (`COLORTERM` unset) get their own 16 colors. `--markdown` prints the Markdown raw,
   `--plain` strips the markup, which is also what a pipe gets. Two versions list the items the
   second one's notes add (`+`) and drop (`-`), by section; betas, the rc and the final of one
-  version share a page. `--abridged` and `--ask` run on the on-device Apple Intelligence model
-  (macOS 26+); nothing leaves the Mac. `--abridged` keeps the overview as it is and lets the model
-  rate the changes of each part, `--ask` answers from the overview and the sections that share
-  words with the question. Notes older than the documentation site (archived HTML, PDFs) are not
+  version share a page. `--abridged` and `--ask` send the whole notes in one request to an
+  OpenAI-compatible API, through AnyLanguageModel: the summary follows a fixed brief and set of
+  headings, the answer comes in one to three sentences. Notes older than the documentation site (archived HTML, PDFs) are not
   available.
 - `remove`: deletes the app bundle. System packages, simulator runtimes and DerivedData are shared
   between Xcode versions and stay.
