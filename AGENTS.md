@@ -97,3 +97,18 @@ builds the arm64 binary, and creates the GitHub release with
 `xcodectl-<ver>-macos-arm64.tar.gz` + `.sha256`. mise (`github:bonkey/xcodectl`) and the brew
 formula resolve versions from GitHub releases, so a bare tag is not a release. Requires a clean
 tree and `gh` logged in.
+
+Pick the version by semver, and pass it explicitly whenever that is not a patch. The bare
+`just release` only ever bumps the patch, which is right for a bugfix or a change nobody can see
+from outside:
+
+- **Patch** (`just release`) — a fix, a wording change, faster or more reliable behaviour, anything
+  that leaves every command, flag, output column and file in place.
+- **Minor** (`just release 0.2.0`) — anything users gain: a new command or subcommand, a new flag or
+  argument, a new column, support for a new platform or format.
+- **Major** (`just release 1.0.0`) — anything users must react to: a command, flag or alias removed
+  or renamed, a default that changes what the tool does, output a script could have parsed changing
+  shape, or a different location or format for the Keychain item or `~/.xcodectl/cache/`.
+
+A release that installs over an older one and then behaves differently without the user asking is a
+major, whatever the diff looks like.
