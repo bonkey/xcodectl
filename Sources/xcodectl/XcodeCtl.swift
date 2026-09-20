@@ -24,6 +24,7 @@ struct XcodeCtl: AsyncParsableCommand {
             Approve.self,
             Select.self,
             Remove.self,
+            RuntimeCommand.self,
             DownloadURL.self,
         ])
 }
@@ -411,6 +412,18 @@ struct Install: AsyncParsableCommand {
     @Flag(help: "Skip upgrading the Command Line Tools to this version (Software Update, needs sudo).")
     var noClt = false
 
+    @Option(
+        name: .customLong("runtimes"),
+        help: "Also install simulator runtimes matching this Xcode: 'all' or a list like 'ios,watchos'.")
+    var runtimeSelection: RuntimeSelection?
+
+    func validate() throws {
+        // Runtimes install through this Xcode's own xcodebuild, which an unapproved Xcode refuses to run.
+        guard runtimeSelection == nil || !noApprove else {
+            throw Fail("--runtimes needs an approved Xcode; drop --no-approve")
+        }
+    }
+
     func run() async throws {
         let release = try await resolveOrPickRelease(version, "Which Xcode?")
 
@@ -427,6 +440,9 @@ struct Install: AsyncParsableCommand {
         }
         if !noClt {
             Installer.upgradeCommandLineTools(for: release)
+        }
+        if let runtimeSelection {
+            try await installRuntimes(runtimeSelection, using: xcode)
         }
         if select {
             try Installer.select(xcode)
@@ -576,6 +592,347 @@ struct Remove: AsyncParsableCommand {
                 "\(leftover.lastPathComponent) is incomplete, from an earlier remove; deleting the rest"))
             return leftover
         }
+    }
+}
+
+// MARK: - RuntimePlatform + ExpressibleByArgument
+
+extension RuntimePlatform: ExpressibleByArgument {
+    init?(argument: String) {
+        self.init(rawValue: argument.lowercased())
+    }
+
+    static var allValueStrings: [String] {
+        allCases.map(\.rawValue)
+    }
+}
+
+// MARK: - RuntimeSelection
+
+/// The value of `install --runtimes`: `all`, or a comma-separated list like `ios,watchos`.
+struct RuntimeSelection: ExpressibleByArgument, Equatable {
+    init?(argument: String) {
+        let text = argument.lowercased().trimmingCharacters(in: .whitespaces)
+        if text == "all" {
+            platforms = RuntimePlatform.allCases
+            isAll = true
+            return
+        }
+        var chosen: [RuntimePlatform] = []
+        for part in text.split(separator: ",") {
+            guard let platform = RuntimePlatform(argument: part.trimmingCharacters(in: .whitespaces)) else {
+                return nil
+            }
+            if !chosen.contains(platform) {
+                chosen.append(platform)
+            }
+        }
+        guard !chosen.isEmpty else {
+            return nil
+        }
+        platforms = chosen
+        isAll = false
+    }
+
+    static var allValueStrings: [String] {
+        ["all"] + RuntimePlatform.allValueStrings
+    }
+
+    let platforms: [RuntimePlatform]
+    /// `all` becomes one `-downloadAllPlatforms` run rather than one run per platform.
+    let isAll: Bool
+}
+
+// MARK: - Runtime helpers
+
+func runtimeRows(_ runtimes: [SimulatorRuntime], installed: [InstalledRuntime]) -> [[String]] {
+    let ready = Set(installed.filter(\.isReady).map { $0.build.lowercased() })
+    var rows = [["PLATFORM", "VERSION", "BUILD", "SIZE", "STATUS"]]
+    for runtime in runtimes {
+        rows.append([
+            runtime.platform.display,
+            runtime.version + (runtime.isBeta ? " beta" : ""),
+            runtime.build,
+            runtime.size > 0 ? formatBytes(runtime.size) : "",
+            ready.contains(runtime.build.lowercased()) ? "installed" : "",
+        ])
+    }
+    return rows
+}
+
+func pickInstalledRuntime(_ question: String, from runtimes: [InstalledRuntime]) throws -> InstalledRuntime {
+    guard !runtimes.isEmpty else {
+        throw Fail("no simulator runtime installed")
+    }
+    return try pick(question, from: runtimes.map {
+        Choice(
+            description: "\($0.display) (\($0.build))  \(formatBytes($0.size))\($0.isReady ? "" : "  \($0.state)")",
+            value: $0)
+    })
+}
+
+/// The Xcode a runtime installs through: a named one, else the active one.
+func runtimeHost(_ version: String?) async throws -> InstalledXcode {
+    if let version {
+        return try await Installed.resolve(version)
+    }
+    guard let active = Installed.activePath(), let xcode = Installed.read(active) else {
+        throw Fail("no active Xcode; run `xcodectl select <version>` or pass --xcode")
+    }
+    return xcode
+}
+
+func installRuntimes(_ selection: RuntimeSelection, using xcode: InstalledXcode) async throws {
+    if let catalog = try? await Runtimes.fetch() {
+        let estimate = Runtimes.estimatedSize(selection.platforms, in: catalog)
+        if estimate > 0 {
+            ui.info(InfoAlert(stringLiteral:
+                "\(selection.platforms.map(\.display).joined(separator: ", ")) runtimes: about \(formatBytes(estimate)) to download"))
+        }
+    }
+    if selection.isAll {
+        try await downloadRuntime(nil, label: "all simulator runtimes", using: xcode)
+        return
+    }
+    for platform in selection.platforms {
+        try await downloadRuntime(platform, label: "\(platform.display) runtime", using: xcode)
+    }
+}
+
+/// Without a build, Xcode picks the runtime matching the Xcode it runs from.
+func downloadRuntime(
+    _ platform: RuntimePlatform?,
+    build: String? = nil,
+    appleSiliconOnly: Bool = true,
+    label: String,
+    using xcode: InstalledXcode)
+    async throws
+{
+    do {
+        try await ui.progressBarStep(
+            message: "Downloading \(label)",
+            successMessage: "Installed \(label)",
+            errorMessage: "Installing \(label) failed")
+        { update in
+            try RuntimeInstaller.install(
+                platform,
+                build: build,
+                appleSiliconOnly: appleSiliconOnly,
+                using: xcode,
+                progress: update)
+        }
+    } catch let failure as Fail where RuntimeInstaller.isAlreadyInstalled(failure.description) {
+        ui.info(InfoAlert(stringLiteral: "\(label) is already installed"))
+    }
+}
+
+/// Deletes registrations and reports whether the disk space actually came back. CoreSimulator frees
+/// the MobileAsset behind a runtime only once the last registration referencing it is gone, and it
+/// says nothing when it skips that, so check.
+func removeRuntimes(_ runtimes: [InstalledRuntime]) async throws {
+    for runtime in runtimes {
+        let label = "\(runtime.display) (\(runtime.build))"
+        let asset = runtime.assetDirectory
+        try await ui.progressStep(
+            message: "Removing \(label)",
+            successMessage: "Removed \(label)",
+            errorMessage: "Removing \(label) failed",
+            showSpinner: true)
+        { _ in
+            try SimCtl.delete(runtime)
+        }
+        guard let asset, FileManager.default.fileExists(atPath: asset.path) else {
+            if runtime.size > 0 {
+                ui.info(InfoAlert(stringLiteral: "Freed \(formatBytes(runtime.size))"))
+            }
+            continue
+        }
+        ui.warning(WarningAlert(stringLiteral: "\(formatBytes(runtime.size)) stays on disk: another runtime "
+                + "registration still references this asset. `xcodectl runtime list-installed` shows them all."))
+    }
+}
+
+// MARK: - RuntimeCommand
+
+struct RuntimeCommand: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "runtime",
+        abstract: "List, install and remove simulator runtimes.",
+        discussion: """
+        Runtimes need no Apple ID: Apple serves the index and the runtimes themselves publicly. \
+        Only the current format is supported, which covers iOS 18, tvOS 18, watchOS 11 and visionOS 2 \
+        and everything newer.
+        """,
+        subcommands: [
+            RuntimeList.self,
+            RuntimeListInstalled.self,
+            RuntimeInstall.self,
+            RuntimeRemove.self,
+            RuntimePrune.self,
+        ],
+        defaultSubcommand: RuntimeList.self)
+}
+
+// MARK: - RuntimeList
+
+struct RuntimeList: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "list",
+        abstract: "Simulator runtimes Apple offers for this Mac.")
+
+    @Option(help: "ios, tvos, watchos or visionos. Omit for every platform.")
+    var platform: RuntimePlatform?
+
+    @Flag(help: "Only released runtimes.")
+    var stable = false
+
+    @Flag(help: "Only betas.")
+    var beta = false
+
+    @Flag(help: "Every version, not just the newest major of each platform.")
+    var all = false
+
+    func validate() throws {
+        guard !(stable && beta) else {
+            throw Fail("--stable and --beta exclude each other")
+        }
+    }
+
+    func run() async throws {
+        let catalog = try await Runtimes.fetch()
+        let installed = (try? SimCtl.runtimes()) ?? []
+        let kind: Runtimes.Filter = stable ? .stable : beta ? .beta : all ? .all : .current
+        let shown = all
+            ? Runtimes.filter(catalog.filter { platform == nil || $0.platform == platform }, kind)
+            : Runtimes.defaultListing(catalog, platform: platform, kind)
+        guard !shown.isEmpty else {
+            throw Fail("no runtimes match")
+        }
+        printTable(runtimeRows(shown, installed: installed))
+    }
+}
+
+// MARK: - RuntimeListInstalled
+
+struct RuntimeListInstalled: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "list-installed",
+        abstract: "Simulator runtimes on this Mac, including leftovers simctl hides.",
+        discussion: """
+        `simctl runtime list` shows usable images only, so an interrupted download or a broken image \
+        stays invisible while still holding several gigabytes. Everything registered is listed here.
+        """)
+
+    func run() async throws {
+        let installed = try SimCtl.runtimes()
+        guard !installed.isEmpty else {
+            throw Fail("no simulator runtime installed")
+        }
+        var rows = [["PLATFORM", "VERSION", "BUILD", "SIZE", "STATE", "IDENTIFIER"]]
+        for runtime in installed {
+            rows.append([
+                runtime.platform?.display ?? "?",
+                runtime.version,
+                runtime.build,
+                formatBytes(runtime.size),
+                runtime.isReady ? "" : runtime.state,
+                runtime.identifier,
+            ])
+        }
+        printTable(rows)
+    }
+}
+
+// MARK: - RuntimeInstall
+
+struct RuntimeInstall: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "install",
+        abstract: "Download and install a simulator runtime.")
+
+    @Argument(help: "ios, tvos, watchos or visionos.")
+    var platform: RuntimePlatform
+
+    @Argument(help: "Runtime version or build. Omit to take the one matching the Xcode used.")
+    var version: String?
+
+    @Option(help: "Install through this Xcode instead of the active one.")
+    var xcode: String?
+
+    func run() async throws {
+        let host = try await runtimeHost(xcode)
+        guard let version else {
+            try await downloadRuntime(platform, label: "\(platform.display) runtime", using: host)
+            return
+        }
+        let runtime = try await Runtimes.resolve(version, platform: platform, in: Runtimes.fetch())
+        guard runtime.runs(onXcode: host.version) else {
+            throw Fail("\(runtime.display) (\(runtime.build)) needs a different Xcode than \(host.name) "
+                + "(\(host.version)); see `xcodectl runtime list --all`")
+        }
+        try await downloadRuntime(
+            platform,
+            build: runtime.build,
+            appleSiliconOnly: runtime.isAppleSiliconOnly,
+            label: "\(runtime.display) (\(runtime.build))",
+            using: host)
+    }
+}
+
+// MARK: - RuntimeRemove
+
+struct RuntimeRemove: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "remove",
+        abstract: "Delete an installed simulator runtime and free its disk space.")
+
+    @Argument(help: "ios, tvos, watchos or visionos. Omit for a picker.")
+    var platform: RuntimePlatform?
+
+    @Argument(help: "Runtime version or build. Omit for a picker.")
+    var version: String?
+
+    func run() async throws {
+        let installed = try SimCtl.runtimes()
+        let candidates = installed.filter { platform == nil || $0.platform == platform }
+        guard let version else {
+            try await removeRuntimes([pickInstalledRuntime("Remove which runtime?", from: candidates)])
+            return
+        }
+        let text = version.lowercased()
+        let hits = candidates.filter { $0.version.lowercased() == text || $0.build.lowercased() == text }
+        guard !hits.isEmpty else {
+            throw Fail("no installed runtime matching \"\(version)\"; see `xcodectl runtime list-installed`")
+        }
+        try await removeRuntimes(hits)
+    }
+}
+
+// MARK: - RuntimePrune
+
+struct RuntimePrune: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "prune",
+        abstract: "Delete runtime registrations that are no longer usable but still take disk space.")
+
+    @Flag(help: "List what would go without deleting anything.")
+    var dryRun = false
+
+    func run() async throws {
+        let leftovers = try SimCtl.runtimes().filter { !$0.isReady }
+        guard !leftovers.isEmpty else {
+            ui.success(SuccessAlert(stringLiteral: "Nothing to prune"))
+            return
+        }
+        let total = leftovers.reduce(0) { $0 + $1.size }
+        guard !dryRun else {
+            printTable([["PLATFORM", "VERSION", "BUILD", "SIZE", "STATE"]] + leftovers.map {
+                [$0.platform?.display ?? "?", $0.version, $0.build, formatBytes($0.size), $0.state]
+            })
+            ui.info(InfoAlert(stringLiteral: "\(formatBytes(total)) in \(leftovers.count) leftover registrations"))
+            return
+        }
+        try await removeRuntimes(leftovers)
     }
 }
 

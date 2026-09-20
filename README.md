@@ -11,11 +11,16 @@ xcodectl list [<regex>]            two latest majors + running betas, and whethe
 xcodectl list-installed            what is in /Applications, active one starred
 xcodectl release-notes [<ver>] [<ver2>] [--markdown | --plain] [--abridged] [--ask "<question>"]
                                    notes rendered in the terminal; two versions: what changed; no login needed
-xcodectl install [<ver>] [--select] [--no-approve] [--no-clt]
+xcodectl install [<ver>] [--select] [--no-approve] [--no-clt] [--runtimes all|ios,watchos,...]
 xcodectl install-clt [<ver>]       only the Command Line Tools of that Xcode version (sudo); no login needed
 xcodectl approve [<ver>]           license + first launch + developer mode (sudo); install does this by default
 xcodectl select [<ver>]            xcode-select (sudo)
 xcodectl remove <ver>
+xcodectl runtime list              simulator runtimes Apple offers; --platform, --stable/--beta, --all
+xcodectl runtime list-installed    what is installed, including leftovers simctl hides
+xcodectl runtime install <platform> [<ver>]
+xcodectl runtime remove [<platform>] [<ver>]
+xcodectl runtime prune [--dry-run] leftover registrations that still hold disk space
 xcodectl session export | import   move the session to a runner
 ```
 
@@ -200,6 +205,60 @@ xcodectl release-notes 27 --abridged --base-url http://localhost:11434/v1 --mode
 That is Ollama. Long notes hold about 15k tokens, more than Ollama reads by default: raise its
 context, for example with `OLLAMA_CONTEXT_LENGTH=32768`.
 
+## Simulator runtimes
+
+No login needed: Apple serves the runtime catalog and the runtimes themselves publicly.
+
+```
+$ xcodectl runtime list
+PLATFORM  VERSION    BUILD     SIZE    STATUS
+iOS       27.2 beta  24B5084k  7.6 GB
+iOS       27.1 beta  24A94401  7.3 GB  installed
+iOS       27.0       24A434    7.5 GB  installed
+tvOS      27.0       24J360    3.5 GB
+watchOS   27.0       24R362    3.6 GB
+visionOS  27.0       24M362    7.0 GB
+```
+
+`--platform ios|tvos|watchos|visionos` narrows it, `--stable` and `--beta` pick one kind, `--all`
+shows every version instead of the newest major of each platform.
+
+Install the runtime matching an Xcode, or an exact one:
+
+```
+xcodectl runtime install ios              # the one matching the active Xcode
+xcodectl runtime install tvos 26.0
+xcodectl runtime install ios --xcode 27.0 # through that Xcode, without selecting it
+```
+
+Install Xcode and its runtimes in one go:
+
+```
+xcodectl install 27.1 --runtimes ios,watchos
+xcodectl install 27.1 --runtimes all      # every platform, about 23 GB
+```
+
+Runtimes are several gigabytes each, and a deleted one only gives its space back once the last
+registration referencing it is gone. `remove` says which happened:
+
+```
+$ xcodectl runtime remove tvos 27.0
+   ✔︎ Removed tvOS 27.0 (24J360)
+i Info
+  Freed 3.4 GB
+```
+
+An interrupted download leaves a registration that `simctl runtime list` does not print while it
+still holds gigabytes. `xcodectl runtime list-installed` shows those, and `prune` clears them:
+
+```
+xcodectl runtime prune --dry-run   # what would go, and how much it frees
+xcodectl runtime prune
+```
+
+Only the current runtime format is supported, which covers iOS 18, tvOS 18, watchOS 11 and
+visionOS 2 and everything newer. Apple Silicon only.
+
 ## Install
 
 ```
@@ -284,7 +343,17 @@ export again.
   headings, the answer comes in one to three sentences. Notes older than the documentation site (archived HTML, PDFs) are not
   available.
 - `remove`: deletes the app bundle. System packages, simulator runtimes and DerivedData are shared
-  between Xcode versions and stay.
+  between Xcode versions and stay; `runtime remove` deletes a runtime.
+- Simulator runtimes: the catalog is Apple's public
+  `https://devimages-cdn.apple.com/downloads/xcode/simulators/index2.dvtdownloadableindex`, read for
+  the current `cryptexDiskImage` entries only and deduplicated to one row per build, preferring the
+  Apple Silicon artifact over the universal one. Apple delivers these as MobileAssets into a
+  SIP-protected store that only Xcode can write, so the download itself is `xcodebuild
+  -downloadPlatform`, pointed at a chosen Xcode through `DEVELOPER_DIR` so it needs neither
+  `xcode-select` nor sudo; without a version, Xcode picks the runtime matching itself. Removal is
+  `simctl runtime delete`, which frees the asset behind a runtime only once the last registration
+  referencing it is gone and says nothing when it skips that, so the tool waits for the deletion to
+  finish and then reports whether the space actually came back.
 
-Files: `~/.xcodectl/cache/` (downloads in flight, cached version list and system requirements
-page). Nothing else.
+Files: `~/.xcodectl/cache/` (downloads in flight, cached version list, system requirements page and
+simulator runtime index). Nothing else.

@@ -18,6 +18,10 @@ Download is 16 parallel `Range` requests on URLSession writing into one prealloc
 `install-clt` for an exact version, and a step of `install` that only upgrades, skipped with
 `--no-clt` or when the CLT receipt is already at least that version), and `select` are the
 only places that call `sudo`.
+Simulator runtimes need no Apple account at all: the catalog is Apple's public
+`index2.dvtdownloadableindex`, and `runtime install` (or `install --runtimes ios,watchos|all`) hands
+the download to that Xcode's `xcodebuild`. Only the current `cryptexDiskImage` format is supported,
+which is iOS 18, tvOS 18, watchOS 11, visionOS 2 and newer.
 Security keys: WebKit refuses WebAuthn for apple.com in third-party apps, so a user script
 routes `navigator.credentials.get` to LibFido2Swift (libfido2 over USB) and returns the
 assertion into the requesting iframe.
@@ -36,7 +40,8 @@ Sources/xcodectl/
   Downloader.swift   parallel ranged download + resume
   Install.swift      installed scan, unxip, move, approve, Command Line Tools, select, remove
   Requirements.swift Apple's system requirements page (newest macOS per Xcode), whether a release runs on this Mac
-  Shell.swift        Fail error, paths, sudo(), small system helpers
+  Runtimes.swift     simulator runtime catalog, install through xcodebuild, removal through simctl
+  Shell.swift        Fail error, paths, sudo(), runTool(), small system helpers
   Version.swift      `let version = "x.y.z"`, bumped by `just release`
 ```
 
@@ -44,8 +49,14 @@ Sources/xcodectl/
 
 - Swift 5 language mode, macOS 14+. Dependencies: swift-argument-parser, Noora, unxip, bonkey/LibFido2Swift, huggingface/AnyLanguageModel (no traits). Do not add
   more without a reason that survives "could Foundation do this".
-- No external processes except `/usr/bin/sudo` (approve, CLT install, select, remove fallback). Networking is
-  URLSession; XIP expansion is libunxip.
+- No external processes except `/usr/bin/sudo` (approve, CLT install, select, remove fallback) and, for
+  simulator runtimes only, that Xcode's `xcodebuild` and `xcrun simctl`. Networking is URLSession; XIP
+  expansion is libunxip.
+- Simulator runtimes are the one thing this tool does not download itself. Apple delivers the current
+  format as MobileAssets into a SIP-protected store that only `xcodebuild -downloadPlatform` can write,
+  so `runtime install` drives that, aimed at a chosen Xcode with `DEVELOPER_DIR` so it needs neither
+  `xcode-select` nor sudo. Tools whose output is parsed run in the C locale (`runTool`), because
+  xcodebuild otherwise prints progress as "3,56 GB".
 - Concurrency: AppKit owns the main thread (`main.swift` starts `NSApp.run()`), the command runs
   in a detached task. Never block the main thread: WebKit and unxip (DispatchIO on the main queue)
   need it. Blocking library calls (libfido2 touch wait) go in `Task.detached`.
