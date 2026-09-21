@@ -215,6 +215,8 @@ enum Installer {
 
     /// License, first-launch packages, developer mode. All via sudo; then the marker that stops the GUI prompt.
     static func approve(_ xcode: InstalledXcode) throws {
+        ui.info(InfoAlert(stringLiteral:
+            "approving \(xcode.name): license, first-launch packages, developer mode (sudo)"))
         try sudo([xcode.xcodebuild.path, "-license", "accept"])
         try sudo([xcode.xcodebuild.path, "-runFirstLaunch"])
         try sudo(["/usr/sbin/DevToolsSecurity", "-enable"])
@@ -263,6 +265,7 @@ enum Installer {
             ui.info(InfoAlert(stringLiteral: "Command Line Tools \(wanted) are already installed"))
             return
         }
+        ui.info(InfoAlert(stringLiteral: "installing Command Line Tools \(wanted) through Software Update (sudo)"))
         let label = "Command Line Tools for Xcode \(wanted)-\(wanted)"
         FileManager.default.createFile(atPath: cltOnDemandMarker, contents: Data())
         defer { try? FileManager.default.removeItem(atPath: cltOnDemandMarker) }
