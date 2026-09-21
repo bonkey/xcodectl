@@ -320,6 +320,9 @@ export again.
   download-list endpoint using that session.
 - Download: 16 parallel HTTP range requests on URLSession into one preallocated file, resumable.
 - Expand: in-process [unxip](https://github.com/saagarjha/unxip).
+- Move: a rename into `/Applications`. On a Mac that keeps its user out of `/Applications`, the
+  archive expands in `~/.xcodectl/tmp` and `sudo mv` moves the app in, so `install` itself never
+  needs to run under sudo.
 - `approve`: `xcodebuild -license accept`, `xcodebuild -runFirstLaunch`, `DevToolsSecurity -enable`.
 - Command Line Tools: `install` runs `sudo softwareupdate --install "Command Line Tools for Xcode
   X.Y-X.Y"` for the Xcode's major.minor when that is newer than the receipt in
@@ -356,4 +359,4 @@ export again.
   finish and then reports whether the space actually came back.
 
 Files: `~/.xcodectl/cache/` (downloads in flight, cached version list, system requirements page and
-simulator runtime index). Nothing else.
+simulator runtime index) and, only during such an install, `~/.xcodectl/tmp/`. Nothing else.

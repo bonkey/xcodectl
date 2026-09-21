@@ -27,6 +27,7 @@ enum Paths {
     static let cache = base.appendingPathComponent("cache")
     static let applications = URL(fileURLWithPath: "/Applications")
     static let expandTmp = applications.appendingPathComponent(".xcodectl-tmp")
+    static let expandFallbackTmp = base.appendingPathComponent("tmp")
     static let xcodeSelectLink = "/var/db/xcode_select_link"
 
     static func ensureCache() throws {

@@ -17,7 +17,9 @@ Download is 16 parallel `Range` requests on URLSession writing into one prealloc
 `install` unless `--no-approve`), the Command Line Tools install (`sudo softwareupdate --install`:
 `install-clt` for an exact version, and a step of `install` that only upgrades, skipped with
 `--no-clt` or when the CLT receipt is already at least that version), and `select` are the
-only places that call `sudo`.
+only places that call `sudo`, apart from two fallbacks for a Mac that keeps its user out of
+`/Applications`: `install` then expands in `~/.xcodectl/tmp` and moves the app in with `sudo mv`,
+and `remove` deletes with `sudo rm`.
 Simulator runtimes need no Apple account at all: the catalog is Apple's public
 `index2.dvtdownloadableindex`, and `runtime install` (or `install --runtimes ios,watchos|all`) hands
 the download to that Xcode's `xcodebuild`. Only the current `cryptexDiskImage` format is supported,
@@ -49,7 +51,7 @@ Sources/xcodectl/
 
 - Swift 5 language mode, macOS 14+. Dependencies: swift-argument-parser, Noora, unxip, bonkey/LibFido2Swift, huggingface/AnyLanguageModel (no traits). Do not add
   more without a reason that survives "could Foundation do this".
-- No external processes except `/usr/bin/sudo` (approve, CLT install, select, remove fallback) and, for
+- No external processes except `/usr/bin/sudo` (approve, CLT install, select, install and remove fallbacks) and, for
   simulator runtimes only, that Xcode's `xcodebuild` and `xcrun simctl`. Networking is URLSession; XIP
   expansion is libunxip.
 - Simulator runtimes are the one thing this tool does not download itself. Apple delivers the current

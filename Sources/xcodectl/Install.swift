@@ -148,11 +148,26 @@ enum Installer {
     /// Software Update only lists Command Line Tools while this marker exists (same trick Homebrew uses).
     static let cltOnDemandMarker = "/tmp/.com.apple.dt.CommandLineTools.installondemand.in-progress"
 
-    /// Expands the XIP into a temp dir next to /Applications (same volume, so the final move is a rename).
+    /// The first candidate this process can create, emptied of what an earlier run left.
+    /// /Applications comes first (same volume, so the final move is a rename); where a managed Mac
+    /// keeps users out of /Applications, the home directory takes over and `move` needs sudo.
+    static func expandDirectory(in candidates: [URL] = [Paths.expandTmp, Paths.expandFallbackTmp]) throws -> URL {
+        var failure: Error = Fail("no directory to expand into")
+        for tmp in candidates {
+            try? FileManager.default.removeItem(at: tmp)
+            do {
+                try FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true)
+                return tmp
+            } catch {
+                failure = error
+            }
+        }
+        throw failure
+    }
+
+    /// Expands the XIP into a temp dir and returns the app inside it.
     static func expand(xip: URL) async throws -> URL {
-        let tmp = Paths.expandTmp
-        try? FileManager.default.removeItem(at: tmp)
-        try FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true)
+        let tmp = try expandDirectory()
 
         let free = (try? Paths.applications.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey]))?
             .volumeAvailableCapacityForImportantUsage ?? Int64.max
@@ -188,9 +203,14 @@ enum Installer {
         do {
             try FileManager.default.moveItem(at: app, to: destination)
         } catch {
-            throw Fail("cannot move into /Applications: \(error.localizedDescription)")
+            do {
+                try sudo(["/bin/mv", app.path, destination.path])
+            } catch {
+                throw Fail("cannot move into /Applications: \(error.localizedDescription)")
+            }
         }
         try? FileManager.default.removeItem(at: Paths.expandTmp)
+        try? FileManager.default.removeItem(at: Paths.expandFallbackTmp)
     }
 
     /// License, first-launch packages, developer mode. All via sudo; then the marker that stops the GUI prompt.
