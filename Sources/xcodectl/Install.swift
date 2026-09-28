@@ -148,33 +148,80 @@ enum Installer {
     /// Software Update only lists Command Line Tools while this marker exists (same trick Homebrew uses).
     static let cltOnDemandMarker = "/tmp/.com.apple.dt.CommandLineTools.installondemand.in-progress"
 
-    /// The first candidate this process can create, emptied of what an earlier run left.
+    /// A directory for expanding one build, under the first root this process can write to.
     /// /Applications comes first (same volume, so the final move is a rename); where a managed Mac
     /// keeps users out of /Applications, the home directory takes over and `move` needs sudo.
-    static func expandDirectory(in candidates: [URL] = [Paths.expandTmp, Paths.expandFallbackTmp]) throws -> URL {
+    /// The directory stays locked until this process exits, so parallel runs never touch it. What
+    /// an earlier run left, in this directory or in any unlocked sibling, is removed.
+    static func expandDirectory(
+        for build: String,
+        in roots: [URL] = [Paths.expandTmp, Paths.expandFallbackTmp])
+        throws -> URL
+    {
         var failure: Error = Fail("no directory to expand into")
-        for tmp in candidates {
-            try? FileManager.default.removeItem(at: tmp)
+        for root in roots {
             do {
-                try FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true)
-                return tmp
+                try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
             } catch {
                 failure = error
+                continue
             }
+            // Claims happen one at a time, so no run deletes a directory another run just created.
+            let rootFD = open(root.path, O_RDONLY | O_DIRECTORY)
+            guard rootFD >= 0 else {
+                failure = Fail("cannot open \(root.path)")
+                continue
+            }
+            flock(rootFD, LOCK_EX)
+            defer { close(rootFD) }
+            let siblings = (try? FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: nil)) ??
+                []
+            for sibling in siblings where sibling.lastPathComponent != build {
+                let fd = open(sibling.path, O_RDONLY)
+                if fd >= 0, flock(fd, LOCK_EX | LOCK_NB) == 0 {
+                    try? FileManager.default.removeItem(at: sibling)
+                }
+                if fd >= 0 {
+                    close(fd)
+                }
+            }
+            let dir = root.appendingPathComponent(build)
+            do {
+                try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            } catch {
+                failure = error
+                continue
+            }
+            let fd = open(dir.path, O_RDONLY | O_DIRECTORY)
+            guard fd >= 0 else {
+                throw Fail("cannot open \(dir.path)")
+            }
+            guard flock(fd, LOCK_EX | LOCK_NB) == 0 else {
+                close(fd)
+                throw Fail("another xcodectl is already installing \(build)")
+            }
+            // The descriptor stays open on purpose: closing it, or exiting, releases the lock.
+            for item in (try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)) ?? [] {
+                try? FileManager.default.removeItem(at: item)
+            }
+            return dir
         }
         throw failure
     }
 
-    /// Expands the XIP into a temp dir and returns the app inside it.
-    static func expand(xip: URL) async throws -> URL {
-        let tmp = try expandDirectory()
-
+    /// Expanding needs about 20 GB for each archive expanded at the same time.
+    static func checkFreeSpace(forExpanding count: Int) throws {
+        let needed = Int64(count) * 20 * 1_073_741_824
         let free = (try? Paths.applications.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey]))?
             .volumeAvailableCapacityForImportantUsage ?? Int64.max
-        guard free > 20 * 1_073_741_824 else {
-            throw Fail("only \(formatBytes(free)) free on the /Applications volume; expanding Xcode needs about 20 GB")
+        guard free > needed else {
+            throw Fail(
+                "only \(formatBytes(free)) free on the /Applications volume; expanding needs about \(formatBytes(needed))")
         }
+    }
 
+    /// Expands the XIP into `tmp`, a directory from `expandDirectory`, and returns the app inside it.
+    static func expand(xip: URL, into tmp: URL) async throws -> URL {
         let dirFD = open(tmp.path, O_RDONLY | O_DIRECTORY)
         guard dirFD >= 0 else {
             throw Fail("cannot open \(tmp.path)")
@@ -196,6 +243,8 @@ enum Installer {
         return tmp.appendingPathComponent(apps[0])
     }
 
+    /// Moves the app out of its expand directory, then removes that directory. The root above it
+    /// stays, because a parallel run may be claiming a directory in it.
     static func move(_ app: URL, to destination: URL) throws {
         if FileManager.default.fileExists(atPath: destination.path) {
             throw Fail("\(destination.path) already exists; remove it first (`xcodectl remove`)")
@@ -209,8 +258,7 @@ enum Installer {
                 throw Fail("cannot move into /Applications: \(error.localizedDescription)")
             }
         }
-        try? FileManager.default.removeItem(at: Paths.expandTmp)
-        try? FileManager.default.removeItem(at: Paths.expandFallbackTmp)
+        try? FileManager.default.removeItem(at: app.deletingLastPathComponent())
     }
 
     /// License, first-launch packages, developer mode. All via sudo; then the marker that stops the GUI prompt.

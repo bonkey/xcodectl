@@ -400,8 +400,11 @@ struct Install: AsyncParsableCommand {
     static let configuration =
         CommandConfiguration(abstract: "Download and install an Xcode version into /Applications.")
 
-    @Argument(help: "26.1, 27, 27-rc1, '27 beta 3', 27A266a, latest, latest-beta. Omit for a picker.")
-    var version: String?
+    @Argument(help: """
+    26.1, 27, 27-rc1, '27 beta 3', 27A266a, latest, latest-beta. Several install in parallel. \
+    Omit for a picker.
+    """)
+    var versions: [String] = []
 
     @Flag(help: "Skip `approve` (license, first launch; needs sudo). Default: approve after installing.")
     var noApprove = false
@@ -422,80 +425,165 @@ struct Install: AsyncParsableCommand {
         guard runtimeSelection == nil || !noApprove else {
             throw Fail("--runtimes needs an approved Xcode; drop --no-approve")
         }
+        guard !select || versions.count <= 1 else {
+            throw Fail("--select takes one version; run `xcodectl select` afterwards")
+        }
     }
 
     func run() async throws {
-        let release = try await resolveOrPickRelease(version, "Which Xcode?")
-
-        let xcode: InstalledXcode
-        if let existing = Installed.find(build: release.build) {
-            ui.info(InfoAlert(stringLiteral: "Xcode \(release.display) is already installed at \(existing.path.path)"))
-            xcode = existing
+        var releases: [Release] = []
+        if versions.isEmpty {
+            releases = try await [resolveOrPickRelease(nil, "Which Xcode?")]
         } else {
-            xcode = try await install(release)
-        }
-
-        if !noApprove {
-            try Installer.approve(xcode)
-        }
-        if !noClt {
-            Installer.upgradeCommandLineTools(for: release)
-        }
-        if let runtimeSelection {
-            try await installRuntimes(runtimeSelection, using: xcode)
-        }
-        if select {
-            try Installer.select(xcode)
-        } else {
-            ui.info(InfoAlert(stringLiteral: "next: `xcodectl select \(release.display)` to make it the active Xcode"))
-        }
-    }
-
-    private func install(_ release: Release) async throws -> InstalledXcode {
-        if let required = release.requires, !versionAtLeast(macOSVersion(), required) {
-            throw Fail("Xcode \(release.display) needs macOS \(required); this Mac runs \(macOSVersion())")
-        }
-        guard let url = release.downloadURL else {
-            throw Fail("no download link for \(release.display)")
-        }
-        if FileManager.default.fileExists(atPath: release.installPath.path) {
-            throw Fail("\(release.installPath.path) exists but is not Xcode \(release.build); remove it first")
-        }
-
-        try Paths.ensureCache()
-        let xip = Paths.cache.appendingPathComponent(release.xipName)
-        if !FileManager.default.fileExists(atPath: xip.path) {
-            let cookies = try await Session.ensureTicket()
-            let header = Session.header(cookies, host: url.host!)
-            let connections = Int(ProcessInfo.processInfo.environment["XCODECTL_CONNECTIONS"] ?? "") ?? Downloader
-                .defaultConnections
-            let downloader = Downloader(url: url, cookieHeader: header, destination: xip, connections: connections)
-            try await ui.progressBarStep(
-                message: "Downloading Xcode \(release.display)",
-                successMessage: "Downloaded Xcode \(release.display)",
-                errorMessage: "Download failed")
-            { update in
-                try await downloader.run(progress: update)
+            let all = try await Releases.fetch()
+            for version in versions {
+                let (release, note) = try Query(version).resolve(in: all)
+                if let note {
+                    ui.info(InfoAlert(stringLiteral: note))
+                }
+                if !releases.contains(where: { $0.build == release.build }) {
+                    releases.append(release)
+                }
             }
         }
 
-        let app = try await ui.progressStep(
-            message: "Expanding \(release.xipName)",
-            successMessage: "Expanded \(release.xipName)",
+        var xcodes: [String: InstalledXcode] = [:]
+        var missing: [Release] = []
+        for release in releases {
+            if let existing = Installed.find(build: release.build) {
+                ui
+                    .info(
+                        InfoAlert(
+                            stringLiteral: "Xcode \(release.display) is already installed at \(existing.path.path)"))
+                xcodes[release.build] = existing
+            } else {
+                missing.append(release)
+            }
+        }
+        if !missing.isEmpty {
+            try await xcodes.merge(install(missing)) { $1 }
+        }
+
+        for release in releases {
+            let xcode = xcodes[release.build]!
+            if !noApprove {
+                try Installer.approve(xcode)
+            }
+            if !noClt {
+                Installer.upgradeCommandLineTools(for: release)
+            }
+            if let runtimeSelection {
+                try await installRuntimes(runtimeSelection, using: xcode)
+            }
+            if select {
+                try Installer.select(xcode)
+            }
+        }
+        if !select {
+            let version = releases.count == 1 ? releases[0].display : "<version>"
+            ui.info(InfoAlert(stringLiteral: "next: `xcodectl select \(version)` to make it the active Xcode"))
+        }
+    }
+
+    /// Downloads all releases at once, then expands them all at once. Keyed by build.
+    private func install(_ releases: [Release]) async throws -> [String: InstalledXcode] {
+        for release in releases {
+            if let required = release.requires, !versionAtLeast(macOSVersion(), required) {
+                throw Fail("Xcode \(release.display) needs macOS \(required); this Mac runs \(macOSVersion())")
+            }
+            guard release.downloadURL != nil else {
+                throw Fail("no download link for \(release.display)")
+            }
+            if FileManager.default.fileExists(atPath: release.installPath.path) {
+                throw Fail("\(release.installPath.path) exists but is not Xcode \(release.build); remove it first")
+            }
+        }
+        // Claimed before downloading: the lock also keeps a parallel run off the same archive.
+        let dirs = try releases.map { try Installer.expandDirectory(for: $0.build) }
+
+        try Paths.ensureCache()
+        let xip = { (release: Release) in Paths.cache.appendingPathComponent(release.xipName) }
+        let downloads = releases.filter { !FileManager.default.fileExists(atPath: xip($0).path) }
+        if !downloads.isEmpty {
+            let cookies = try await Session.ensureTicket()
+            let connections = Int(ProcessInfo.processInfo.environment["XCODECTL_CONNECTIONS"] ?? "") ?? Downloader
+                .defaultConnections
+            let names = downloads.map { "Xcode \($0.display)" }.joined(separator: ", ")
+            let fractions = Fractions(count: downloads.count)
+            try await ui.progressBarStep(
+                message: "Downloading \(names)",
+                successMessage: "Downloaded \(names)",
+                errorMessage: "Download failed")
+            { update in
+                try await withThrowingTaskGroup(of: Void.self) { group in
+                    for (i, release) in downloads.enumerated() {
+                        let url = release.downloadURL!
+                        let downloader = Downloader(
+                            url: url,
+                            cookieHeader: Session.header(cookies, host: url.host!),
+                            destination: xip(release),
+                            connections: connections)
+                        group.addTask {
+                            try await downloader.run { fractions.set(i, $0, report: update) }
+                        }
+                    }
+                    try await group.waitForAll()
+                }
+            }
+        }
+
+        try Installer.checkFreeSpace(forExpanding: releases.count)
+        let names = releases.map(\.xipName).joined(separator: ", ")
+        let apps = try await ui.progressStep(
+            message: "Expanding \(names)",
+            successMessage: "Expanded \(names)",
             errorMessage: "Expanding failed",
             showSpinner: true)
         { _ in
-            try await Installer.expand(xip: xip)
+            try await withThrowingTaskGroup(of: (Int, URL).self) { group in
+                for (i, release) in releases.enumerated() {
+                    group.addTask { try await (i, Installer.expand(xip: xip(release), into: dirs[i])) }
+                }
+                var apps = [URL?](repeating: nil, count: releases.count)
+                for try await (i, app) in group {
+                    apps[i] = app
+                }
+                return apps.map { $0! }
+            }
         }
-        try Installer.move(app, to: release.installPath)
-        try? FileManager.default.removeItem(at: xip)
 
-        guard let xcode = Installed.read(release.installPath) else {
-            throw Fail("installed to \(release.installPath.path) but cannot read its version.plist")
+        var xcodes: [String: InstalledXcode] = [:]
+        for (release, app) in zip(releases, apps) {
+            try Installer.move(app, to: release.installPath)
+            try? FileManager.default.removeItem(at: xip(release))
+            guard let xcode = Installed.read(release.installPath) else {
+                throw Fail("installed to \(release.installPath.path) but cannot read its version.plist")
+            }
+            ui.success(SuccessAlert(stringLiteral: "Installed Xcode \(release.display) at \(release.installPath.path)"))
+            xcodes[release.build] = xcode
         }
-        ui.success(SuccessAlert(stringLiteral: "Installed Xcode \(release.display) at \(release.installPath.path)"))
-        return xcode
+        return xcodes
     }
+}
+
+// MARK: - Fractions
+
+/// Progress of parallel downloads, as one average fraction.
+private final class Fractions: @unchecked Sendable {
+    init(count: Int) {
+        values = Array(repeating: 0, count: count)
+    }
+
+    /// Records one download's progress and reports the average, one report at a time.
+    func set(_ index: Int, _ value: Double, report: (Double) -> Void) {
+        lock.withLock {
+            values[index] = value
+            report(values.reduce(0, +) / Double(values.count))
+        }
+    }
+
+    private let lock = NSLock()
+    private var values: [Double]
 }
 
 // MARK: - InstallClt
