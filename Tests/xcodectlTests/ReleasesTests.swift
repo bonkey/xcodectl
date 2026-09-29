@@ -5,6 +5,8 @@
 @testable import xcodectl
 import XCTest
 
+// MARK: - ReleasesTests
+
 final class ReleasesTests: XCTestCase {
     func testDefaultListingShowsTheTwoLatestStableMajorsWithoutOldPrereleases() {
         XCTAssertEqual(Releases.defaultListing(stableNewest).map(\.display), ["27.0", "26.6", "26.5"])
@@ -61,4 +63,70 @@ final class ReleasesTests: XCTestCase {
         makeRelease("26.6", "26F71", (2026, 8, 12)),
         makeRelease("25.4", "25E301", (2025, 7, 2)),
     ]
+}
+
+// MARK: - UpdatesTests
+
+final class UpdatesTests: XCTestCase {
+    func testBetaMovesToTheNewestBuildOfItsMinorAndOthersStay() {
+        XCTAssertEqual(
+            updates([
+                makeApp("Xcode-27.1-beta1.app", version: "27.1", build: "27A9269"),
+                makeApp("Xcode-27.2-beta1.app", version: "27.2", build: "27B5019j"),
+            ]),
+            ["Xcode-27.2-beta1.app -> 27.2-beta2"])
+    }
+
+    func testFinalMovesToTheNewestFinalOfItsMinorOnly() {
+        XCTAssertEqual(
+            updates([
+                makeApp("Xcode-27.0.app", version: "27.0", build: "27A266a"),
+                makeApp("Xcode-26.4.app", version: "26.4", build: "17E192"),
+                makeApp("Xcode-26.6.app", version: "26.6", build: "17F113"),
+            ]),
+            ["Xcode-27.0.app -> 27.0.1", "Xcode-26.4.app -> 26.4.1"])
+    }
+
+    func testBetaOfAShippedMinorMovesToTheFinal() {
+        XCTAssertEqual(
+            updates([makeApp("Xcode-27.0-beta1.app", version: "27.0", build: "27A5218g")]),
+            ["Xcode-27.0-beta1.app -> 27.0.1"])
+    }
+
+    func testTargetAlreadyInstalledOrUnknownBuildIsSkipped() {
+        XCTAssertEqual(
+            updates([
+                makeApp("Xcode-27.2-beta1.app", version: "27.2", build: "27B5019j"),
+                makeApp("Xcode-27.2-beta2.app", version: "27.2", build: "27B5030a"),
+                makeApp("Xcode-local.app", version: "27.0", build: "27Z999"),
+            ]),
+            [])
+    }
+
+    func testTwoInstallsOfOneMinorShareOneUpdate() {
+        XCTAssertEqual(
+            updates([
+                makeApp("Xcode-27.0.app", version: "27.0", build: "27A266a"),
+                makeApp("Xcode-27.0-beta1.app", version: "27.0", build: "27A5218g"),
+            ]),
+            ["Xcode-27.0.app -> 27.0.1"])
+    }
+
+    /// data.json order: newest first.
+    private let releases = [
+        makeRelease("27.2", "27B5030a", (2026, 9, 28), kind: .init(beta: 2)),
+        makeRelease("27.0.1", "27A300", (2026, 9, 25)),
+        makeRelease("27.1", "27A9269", (2026, 9, 18), kind: .init(beta: 1)),
+        makeRelease("27.2", "27B5019j", (2026, 9, 16), kind: .init(beta: 1)),
+        makeRelease("27.0", "27A266a", (2026, 9, 14)),
+        makeRelease("27.0", "27A266a", (2026, 9, 9), kind: .init(rc: 1)),
+        makeRelease("27.0", "27A5218g", (2026, 6, 9), kind: .init(beta: 1)),
+        makeRelease("26.6", "17F113", (2026, 6, 25)),
+        makeRelease("26.4.1", "17E202", (2026, 4, 16)),
+        makeRelease("26.4", "17E192", (2026, 3, 24)),
+    ]
+
+    private func updates(_ installed: [InstalledXcode]) -> [String] {
+        Releases.updates(for: installed, in: releases).map { "\($0.from.name) -> \($0.to.display)" }
+    }
 }

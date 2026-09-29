@@ -194,6 +194,33 @@ enum Releases {
         }
     }
 
+    /// The release each installed Xcode updates to: the newest of its major.minor, a final release for
+    /// a final one and any kind for a prerelease. Builds missing from `releases`, already newest or
+    /// whose target is already installed get no entry.
+    static func updates(
+        for installed: [InstalledXcode],
+        in releases: [Release])
+        -> [(from: InstalledXcode, to: Release)]
+    {
+        func line(_ r: Release) -> [Int] {
+            Array((r.numberComponents + [0, 0]).prefix(2))
+        }
+        var taken = Set(installed.map { $0.build.lowercased() })
+        var result: [(from: InstalledXcode, to: Release)] = []
+        for xcode in installed {
+            // A release candidate and its final release share a build; the final one decides.
+            let own = releases.filter { $0.build.lowercased() == xcode.build.lowercased() }
+            guard let current = own.first(where: \.isFinal) ?? own.first,
+                  let target = releases.first(where: { line($0) == line(current) && ($0.isFinal || !current.isFinal) }),
+                  taken.insert(target.build.lowercased()).inserted
+            else {
+                continue
+            }
+            result.append((xcode, target))
+        }
+        return result
+    }
+
     static func search(_ releases: [Release], regex pattern: String) throws -> [Release] {
         guard let re = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive) else {
             throw Fail("invalid regex: \(pattern)")

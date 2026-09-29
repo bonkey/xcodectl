@@ -13,6 +13,9 @@ xcodectl release-notes [<ver>] [<ver2>] [--markdown | --plain] [--abridged] [--a
                                    notes rendered in the terminal; two versions: what changed; no login needed
 xcodectl install [<ver>...] [--select] [--no-approve] [--no-clt] [--runtimes all|ios,watchos,...]
                                    several versions download and expand in parallel; so do separate runs
+xcodectl update [--dry-run] [--no-approve] [--no-clt]
+                                   newest build of each installed major.minor: 27.0 -> 27.0.1,
+                                   27.2-beta1 -> 27.2-beta2 (or 27.2 once released); old ones stay
 xcodectl install-clt [<ver>]       only the Command Line Tools of that Xcode version (sudo); no login needed
 xcodectl approve [<ver>]           license + first launch + developer mode (sudo); install does this by default
 xcodectl select [<ver>]            xcode-select (sudo)

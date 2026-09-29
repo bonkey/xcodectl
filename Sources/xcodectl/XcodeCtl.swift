@@ -20,6 +20,7 @@ struct XcodeCtl: AsyncParsableCommand {
             ListInstalled.self,
             ReleaseNotesCommand.self,
             Install.self,
+            Update.self,
             InstallClt.self,
             Approve.self,
             Select.self,
@@ -574,6 +575,48 @@ struct Install: AsyncParsableCommand {
             xcodes[release.build] = xcode
         }
         return xcodes
+    }
+}
+
+// MARK: - Update
+
+struct Update: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        abstract: "Install the newest build of each installed Xcode's major.minor version.",
+        discussion: """
+        A final release moves to the newest final release of its major.minor (27.0 to 27.0.1), a beta \
+        or rc to the newest build of its major.minor, prerelease or final (27.2-beta1 to 27.2-beta2 or \
+        27.2). The old versions stay installed; `xcodectl remove` deletes them.
+        """)
+
+    @Flag(help: "Skip `approve` (license, first launch; needs sudo). Default: approve after installing.")
+    var noApprove = false
+
+    @Flag(help: "Skip upgrading the Command Line Tools (Software Update, needs sudo).")
+    var noClt = false
+
+    @Flag(help: "Only print what would be installed.")
+    var dryRun = false
+
+    func run() async throws {
+        let installed = Installed.all()
+        guard !installed.isEmpty else {
+            throw Fail("no Xcode installed in /Applications")
+        }
+        let updates = try await Releases.updates(for: installed, in: Releases.fetch())
+        guard !updates.isEmpty else {
+            ui.success(SuccessAlert(stringLiteral: "Every installed Xcode is up to date"))
+            return
+        }
+        for (from, to) in updates {
+            ui.info(InfoAlert(stringLiteral: "\(from.name) \(from.build) -> Xcode \(to.display) \(to.build)"))
+        }
+        guard !dryRun else {
+            return
+        }
+        try await Install
+            .parse(updates.map(\.to.build) + (noApprove ? ["--no-approve"] : []) + (noClt ? ["--no-clt"] : []))
+            .run()
     }
 }
 
