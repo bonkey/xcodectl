@@ -54,7 +54,8 @@ release VER="":
     fi
     just release-build
     git tag "v$ver" 2>/dev/null || [ "$(git rev-parse "v$ver")" = "$(git rev-parse HEAD)" ]
-    git push && git push origin "v$ver"
+    git push
+    git push origin "v$ver"
     asset="xcodectl-$ver-macos-arm64.tar.gz"
     tar -C "$(just release-bin)" -czf "$asset" xcodectl
     shasum -a 256 "$asset" > "$asset.sha256"
