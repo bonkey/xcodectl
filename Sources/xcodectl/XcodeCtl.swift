@@ -502,10 +502,16 @@ struct Install: AsyncParsableCommand {
         }
         // Claimed before downloading: the lock also keeps a parallel run off the same archive.
         let dirs = try releases.map { try Installer.expandDirectory(for: $0.build) }
+        // An earlier run expanded these but could not move them into /Applications.
+        let expanded = dirs.map(Installer.expanded(in:))
+        for app in expanded.compactMap(\.self) {
+            ui.info(InfoAlert(stringLiteral: "reusing \(app.path), expanded by an earlier run"))
+        }
+        let pending = releases.indices.filter { expanded[$0] == nil }
 
         try Paths.ensureCache()
         let xip = { (release: Release) in Paths.cache.appendingPathComponent(release.xipName) }
-        let downloads = releases.filter { !FileManager.default.fileExists(atPath: xip($0).path) }
+        let downloads = pending.map { releases[$0] }.filter { !FileManager.default.fileExists(atPath: xip($0).path) }
         if !downloads.isEmpty {
             let cookies = try await Session.ensureTicket()
             let connections = Int(ProcessInfo.processInfo.environment["XCODECTL_CONNECTIONS"] ?? "") ?? Downloader
@@ -534,28 +540,31 @@ struct Install: AsyncParsableCommand {
             }
         }
 
-        try Installer.checkFreeSpace(forExpanding: releases.count)
-        let names = releases.map(\.xipName).joined(separator: ", ")
-        let apps = try await ui.progressStep(
-            message: "Expanding \(names)",
-            successMessage: "Expanded \(names)",
-            errorMessage: "Expanding failed",
-            showSpinner: true)
-        { _ in
-            try await withThrowingTaskGroup(of: (Int, URL).self) { group in
-                for (i, release) in releases.enumerated() {
-                    group.addTask { try await (i, Installer.expand(xip: xip(release), into: dirs[i])) }
+        var apps = expanded
+        if !pending.isEmpty {
+            try Installer.checkFreeSpace(forExpanding: pending.count)
+            let names = pending.map { releases[$0].xipName }.joined(separator: ", ")
+            apps = try await ui.progressStep(
+                message: "Expanding \(names)",
+                successMessage: "Expanded \(names)",
+                errorMessage: "Expanding failed",
+                showSpinner: true)
+            { _ in
+                try await withThrowingTaskGroup(of: (Int, URL).self) { group in
+                    for i in pending {
+                        group.addTask { try await (i, Installer.expand(xip: xip(releases[i]), into: dirs[i])) }
+                    }
+                    var result = expanded
+                    for try await (i, app) in group {
+                        result[i] = app
+                    }
+                    return result
                 }
-                var apps = [URL?](repeating: nil, count: releases.count)
-                for try await (i, app) in group {
-                    apps[i] = app
-                }
-                return apps.map { $0! }
             }
         }
 
         var xcodes: [String: InstalledXcode] = [:]
-        for (release, app) in zip(releases, apps) {
+        for (release, app) in zip(releases, apps.map { $0! }) {
             try Installer.move(app, to: release.installPath)
             try? FileManager.default.removeItem(at: xip(release))
             guard let xcode = Installed.read(release.installPath) else {

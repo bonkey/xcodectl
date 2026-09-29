@@ -148,11 +148,16 @@ enum Installer {
     /// Software Update only lists Command Line Tools while this marker exists (same trick Homebrew uses).
     static let cltOnDemandMarker = "/tmp/.com.apple.dt.CommandLineTools.installondemand.in-progress"
 
+    /// Written into an expand directory once its expansion finishes, so a later run can tell a complete
+    /// app (left behind when the move failed) from a partial one.
+    static let expandedMarker = ".expanded"
+
     /// A directory for expanding one build, under the first root this process can write to.
     /// /Applications comes first (same volume, so the final move is a rename); where a managed Mac
     /// keeps users out of /Applications, the home directory takes over and `move` needs sudo.
     /// The directory stays locked until this process exits, so parallel runs never touch it. What
-    /// an earlier run left, in this directory or in any unlocked sibling, is removed.
+    /// an earlier run left, in this directory or in any unlocked sibling, is removed, except a finished
+    /// expansion of this build, which `expanded(in:)` then returns.
     static func expandDirectory(
         for build: String,
         in roots: [URL] = [Paths.expandTmp, Paths.expandFallbackTmp])
@@ -201,12 +206,25 @@ enum Installer {
                 throw Fail("another xcodectl is already installing \(build)")
             }
             // The descriptor stays open on purpose: closing it, or exiting, releases the lock.
+            if expanded(in: dir) != nil {
+                return dir
+            }
             for item in (try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)) ?? [] {
                 try? FileManager.default.removeItem(at: item)
             }
             return dir
         }
         throw failure
+    }
+
+    /// The app in `dir` when an earlier run finished expanding it there.
+    static func expanded(in dir: URL) -> URL? {
+        guard FileManager.default.fileExists(atPath: dir.appendingPathComponent(expandedMarker).path) else {
+            return nil
+        }
+        let apps = ((try? FileManager.default.contentsOfDirectory(atPath: dir.path)) ?? [])
+            .filter { $0.hasSuffix(".app") }
+        return apps.count == 1 ? dir.appendingPathComponent(apps[0]) : nil
     }
 
     /// Expanding needs about 20 GB for each archive expanded at the same time.
@@ -240,6 +258,7 @@ enum Installer {
         guard apps.count == 1 else {
             throw Fail("expected one .app inside the archive, found \(apps.count) (\(tmp.path) left for inspection)")
         }
+        FileManager.default.createFile(atPath: tmp.appendingPathComponent(expandedMarker).path, contents: Data())
         return tmp.appendingPathComponent(apps[0])
     }
 

@@ -35,6 +35,25 @@ final class InstallerTests: XCTestCase {
         XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: dir.path), [])
     }
 
+    func testExpandDirectoryKeepsAnExpansionAnEarlierRunFinished() throws {
+        let tmp = root.appendingPathComponent("tmp")
+        let dir = tmp.appendingPathComponent("27A1")
+        try FileManager.default.createDirectory(
+            at: dir.appendingPathComponent("Xcode.app"),
+            withIntermediateDirectories: true)
+        try Data().write(to: dir.appendingPathComponent(Installer.expandedMarker))
+        XCTAssertEqual(try Installer.expandDirectory(for: "27A1", in: [tmp]).path, dir.path)
+        XCTAssertEqual(Installer.expanded(in: dir)?.path, dir.appendingPathComponent("Xcode.app").path)
+    }
+
+    func testExpandedIgnoresAnUnfinishedExpansion() throws {
+        let dir = root.appendingPathComponent("tmp/27A1")
+        try FileManager.default.createDirectory(
+            at: dir.appendingPathComponent("Xcode.app"),
+            withIntermediateDirectories: true)
+        XCTAssertNil(Installer.expanded(in: dir))
+    }
+
     func testExpandDirectoryRemovesWhatAnEarlierRunOfAnotherBuildLeft() throws {
         let tmp = root.appendingPathComponent("tmp")
         try FileManager.default.createDirectory(

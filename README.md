@@ -326,7 +326,9 @@ export again.
 - Expand: in-process [unxip](https://github.com/saagarjha/unxip).
 - Move: a rename into `/Applications`. On a Mac that keeps its user out of `/Applications`, the
   archive expands in `~/.xcodectl/tmp` and `sudo mv` moves the app in, so `install` itself never
-  needs to run under sudo.
+  needs to run under sudo. When the move fails, the expanded app stays there and the next
+  `install` of that version moves it in without downloading or expanding again (an install of
+  another version in between removes it).
 - `approve`: `xcodebuild -license accept`, `xcodebuild -runFirstLaunch`, `DevToolsSecurity -enable`.
 - Command Line Tools: `install` runs `sudo softwareupdate --install "Command Line Tools for Xcode
   X.Y-X.Y"` for the Xcode's major.minor when that is newer than the receipt in
