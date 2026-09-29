@@ -92,9 +92,11 @@ Resolved Issues
 
 ### Summary and questions
 
-`--abridged` and `--ask` send the whole notes to a model in one request: OpenRouter or OpenAI with
-the API key in `OPENROUTER_API_KEY` or `OPENAI_API_KEY` (looked up in that order), or a server of
-your own, such as Ollama. The default model is `gpt-5.6-luna` on both providers, with low reasoning
+`--abridged` and `--ask` send the whole notes to a model in one request: OpenRouter, OpenAI or
+Gemini with the API key in `OPENROUTER_API_KEY`, `OPENAI_API_KEY` or `GEMINI_API_KEY` (looked up in
+that order), or a server of your own, such as Ollama. The default model is `gpt-5.6-luna` on
+OpenRouter and OpenAI and `gemini-3.8-flash` on Gemini, through its
+[OpenAI compatible API](https://ai.google.dev/gemini-api/docs/openai), all with low reasoning
 effort. The spinner names the model, the provider and the key variable in use.
 
 `--abridged` takes five to twenty seconds. The model writes for a typical developer of apps in
@@ -194,7 +196,8 @@ Treat answers and summaries as a pointer into the notes, not as the notes.
 ```
 --key-env MY_KEY               read the API key from another environment variable (goes to OpenAI
                                unless --provider says otherwise)
---provider openai|openrouter   use this provider's key although the other one is set too
+--provider openai|openrouter|gemini
+                               use this provider's key although another one is set too
 --model <id>                   use this model
 --base-url <url> --model <id>  another OpenAI-compatible API; needs no key
 ```

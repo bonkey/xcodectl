@@ -27,6 +27,21 @@ final class HostedModelTests: XCTestCase {
         XCTAssertEqual(openai.defaultModel, "gpt-5.6-luna")
     }
 
+    func testTheGeminiKeyComesLast() throws {
+        let gemini = try HostedModel.resolve(environment: ["GEMINI_API_KEY": "gm-key"])
+        XCTAssertEqual(gemini.provider, .gemini)
+        XCTAssertEqual(gemini.place, "Gemini")
+        XCTAssertEqual(gemini.keyVariable, "GEMINI_API_KEY")
+        XCTAssertEqual(gemini.baseURL.absoluteString, "https://generativelanguage.googleapis.com/v1beta/openai")
+        XCTAssertEqual(gemini.defaultModel, "gemini-3.8-flash")
+        XCTAssertEqual(
+            try HostedModel.resolve(environment: keys.merging(["GEMINI_API_KEY": "gm-key"]) { $1 }).provider,
+            .openrouter)
+        XCTAssertEqual(try HostedModel.resolve(
+            environment: keys.merging(["GEMINI_API_KEY": "gm-key"]) { $1 },
+            provider: .gemini).apiKey, "gm-key")
+    }
+
     func testTheProviderNamesItsKeyVariable() throws {
         let router = try HostedModel.resolve(environment: keys, provider: .openrouter, model: "x/y")
         XCTAssertEqual(router.apiKey, "sk-or-router")

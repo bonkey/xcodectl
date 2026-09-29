@@ -11,6 +11,7 @@ import Foundation
 enum Provider: String, ExpressibleByArgument, CaseIterable {
     case openrouter
     case openai
+    case gemini
 
     /// The default model is cheap, fast and follows the brief of the summary.
     var api: (name: String, baseURL: URL, keyVariable: String, defaultModel: String) {
@@ -20,6 +21,11 @@ enum Provider: String, ExpressibleByArgument, CaseIterable {
 
         case .openrouter:
             ("OpenRouter", URL(string: "https://openrouter.ai/api/v1")!, "OPENROUTER_API_KEY", "openai/gpt-5.6-luna")
+
+        case .gemini:
+            (
+                "Gemini", URL(string: "https://generativelanguage.googleapis.com/v1beta/openai")!, "GEMINI_API_KEY",
+                "gemini-3.8-flash")
         }
     }
 }

@@ -287,8 +287,9 @@ struct ReleaseNotesCommand: AsyncParsableCommand {
         abstract: "Show the release notes of an Xcode version, or what changed between two.",
         discussion: """
         With a second version: the list items and paragraphs its notes add (+) and drop (-) compared \
-        to the first. --abridged and --ask send the notes to a model: OpenRouter or OpenAI with the key \
-        in OPENROUTER_API_KEY or OPENAI_API_KEY, or a server of your own with --base-url and --model.
+        to the first. --abridged and --ask send the notes to a model: OpenRouter, OpenAI or Gemini with \
+        the key in OPENROUTER_API_KEY, OPENAI_API_KEY or GEMINI_API_KEY, or a server of your own with \
+        --base-url and --model.
         """)
 
     @Argument(help: "Xcode version, same forms as `install`. Omit for a picker.")
@@ -309,7 +310,8 @@ struct ReleaseNotesCommand: AsyncParsableCommand {
     @Option(help: "Answer a question about the notes with a model, e.g. \"which macOS is required?\"")
     var ask: String?
 
-    @Option(help: "Environment variable holding the API key. Default: OPENROUTER_API_KEY, then OPENAI_API_KEY.")
+    @Option(
+        help: "Environment variable holding the API key. Default: OPENROUTER_API_KEY, then OPENAI_API_KEY, then GEMINI_API_KEY.")
     var keyEnv: String?
 
     @Option(help: "API the key belongs to. Default: by the variable that is set, else openai.")
@@ -320,7 +322,7 @@ struct ReleaseNotesCommand: AsyncParsableCommand {
         help: "Another OpenAI-compatible API, e.g. Ollama at http://localhost:11434/v1; needs --model, not a key.")
     var baseURL: String?
 
-    @Option(help: "Model id. Default: gpt-5.6-luna.")
+    @Option(help: "Model id. Default: gpt-5.6-luna, on Gemini gemini-3.8-flash.")
     var model: String?
 
     func validate() throws {
