@@ -12,9 +12,10 @@ xcodectl list [<regex>]            two latest majors + running betas, and whethe
 xcodectl list-installed            what is in /Applications, active one starred
 xcodectl release-notes [<ver>] [<ver2>] [--markdown | --plain] [--abridged] [--ask "<question>"]
                                    notes rendered in the terminal; two versions: what changed; no login needed
-xcodectl install [<ver>...] [--select] [--no-approve] [--no-clt] [--runtimes all|ios,watchos,...]
+xcodectl install [<ver>...] [--select] [--no-approve] [--no-clt] [--no-autologin]
+                 [--runtimes all|ios,watchos,...]
                                    several versions download and expand in parallel; so do separate runs
-xcodectl update [--dry-run] [--no-approve] [--no-clt]
+xcodectl update [--dry-run] [--no-approve] [--no-clt] [--no-autologin]
                                    newest build of each installed major.minor: 27.0 -> 27.0.1,
                                    27.2-beta1 -> 27.2-beta2 (or 27.2 once released); old ones stay
 xcodectl install-clt [<ver>]       only the Command Line Tools of that Xcode version (sudo); no login needed
@@ -290,6 +291,10 @@ xcodectl select 26.6    # sudo: xcode-select
 
 Two-factor codes (trusted device, SMS) and hardware security keys (YubiKey and other FIDO2 keys,
 PIN + touch) both work in the window. Passkeys stored in iCloud Keychain do not.
+
+When the session is missing or Apple no longer accepts it, `install` and `update` open the same
+window before downloading and carry on once you are signed in. They do so only at a terminal and
+only for the Keychain session, not for `XCODECTL_SESSION`; `--no-autologin` makes them fail instead.
 
 ## CI (self-hosted runner)
 

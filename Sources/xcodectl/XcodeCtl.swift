@@ -168,13 +168,30 @@ struct Login: AsyncParsableCommand {
         abstract: "Sign in to Apple Developer in a window; keeps the session in your Keychain.",
         discussion: "Two-factor codes and security keys (YubiKey etc.) work; the key is driven by the tool itself.")
 
-    func run() async throws {
+    /// Signs in through the window and stores the session, download ticket included, in the Keychain.
+    static func signIn() async throws -> [Cookie] {
         let window = await MainActor.run { LoginWindow() }
         let cookies = try await window.run().map(Cookie.init)
         let withTicket = try await ui.progressStep(message: "Fetching download ticket") { _ in
             try await Session.refreshTicket(cookies)
         }
         try Session.save(withTicket)
+        return withTicket
+    }
+
+    /// The sign-in for `--autologin`; nil when it is off or nobody is at the terminal to use the window.
+    static func autologin(_ enabled: Bool) -> Session.SignIn? {
+        guard enabled, isInteractive else {
+            return nil
+        }
+        return {
+            ui.info(InfoAlert(stringLiteral: "No valid Apple session; opening the sign-in window"))
+            return try await signIn()
+        }
+    }
+
+    func run() async throws {
+        _ = try await Self.signIn()
         ui.success("Signed in. Runners: `xcodectl auth export` here, `xcodectl auth import` there.")
     }
 }
@@ -442,6 +459,11 @@ struct Install: AsyncParsableCommand {
     @Flag(help: "Skip upgrading the Command Line Tools to this version (Software Update, needs sudo).")
     var noClt = false
 
+    @Flag(
+        inversion: .prefixedNo,
+        help: "Open the sign-in window when the Apple session is missing or expired (only at a terminal).")
+    var autologin = true
+
     @Option(
         name: .customLong("runtimes"),
         help: "Also install simulator runtimes matching this Xcode: 'all' or a list like 'ios,watchos'.")
@@ -538,7 +560,7 @@ struct Install: AsyncParsableCommand {
         let xip = { (release: Release) in Paths.cache.appendingPathComponent(release.xipName) }
         let downloads = pending.map { releases[$0] }.filter { !FileManager.default.fileExists(atPath: xip($0).path) }
         if !downloads.isEmpty {
-            let cookies = try await Session.ensureTicket()
+            let cookies = try await Session.ensureTicket(signIn: Login.autologin(autologin))
             let connections = Int(ProcessInfo.processInfo.environment["XCODECTL_CONNECTIONS"] ?? "") ?? Downloader
                 .defaultConnections
             let names = downloads.map { "Xcode \($0.display)" }.joined(separator: ", ")
@@ -619,6 +641,11 @@ struct Update: AsyncParsableCommand {
     @Flag(help: "Skip upgrading the Command Line Tools (Software Update, needs sudo).")
     var noClt = false
 
+    @Flag(
+        inversion: .prefixedNo,
+        help: "Open the sign-in window when the Apple session is missing or expired (only at a terminal).")
+    var autologin = true
+
     @Flag(help: "Only print what would be installed.")
     var dryRun = false
 
@@ -639,7 +666,9 @@ struct Update: AsyncParsableCommand {
             return
         }
         try await Install
-            .parse(updates.map(\.to.build) + (noApprove ? ["--no-approve"] : []) + (noClt ? ["--no-clt"] : []))
+            .parse(
+                updates.map(\.to.build) + (noApprove ? ["--no-approve"] : []) + (noClt ? ["--no-clt"] : [])
+                    + (autologin ? [] : ["--no-autologin"]))
             .run()
     }
 }
@@ -1113,6 +1142,7 @@ struct DownloadURL: AsyncParsableCommand {
     @Argument var url: String
     @Argument var destination: String
     @Flag var withTicket = false
+    @Flag(inversion: .prefixedNo) var autologin = true
 
     func run() async throws {
         guard let url = URL(string: url) else {
@@ -1120,7 +1150,7 @@ struct DownloadURL: AsyncParsableCommand {
         }
         var header = ""
         if withTicket {
-            let cookies = try await Session.ensureTicket()
+            let cookies = try await Session.ensureTicket(signIn: Login.autologin(autologin))
             header = Session.header(cookies, host: url.host!)
         }
         let connections = Int(ProcessInfo.processInfo.environment["XCODECTL_CONNECTIONS"] ?? "") ?? Downloader

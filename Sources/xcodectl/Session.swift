@@ -41,10 +41,24 @@ struct Cookie: Codable, Equatable {
     }
 }
 
+// MARK: - SessionExpired
+
+/// Apple no longer accepts the login session; only signing in again helps.
+struct SessionExpired: Error, LocalizedError, CustomStringConvertible {
+    let description: String
+
+    var errorDescription: String? {
+        description
+    }
+}
+
 // MARK: - Session
 
 enum Session {
     enum Source { case environment, keychain }
+
+    /// Signs in anew and returns the stored session, download ticket included.
+    typealias SignIn = () async throws -> [Cookie]
 
     static let envKey = "XCODECTL_SESSION"
     static let loginCookie = "myacinfo"
@@ -89,25 +103,43 @@ enum Session {
     }
 
     /// Returns cookies that include a valid download ticket, refreshing it from the login session when needed.
-    static func ensureTicket() async throws -> [Cookie] {
+    /// `signIn` replaces a missing or expired Keychain session; nil fails instead.
+    static func ensureTicket(signIn: SignIn?) async throws -> [Cookie] {
         guard let (cookies, source) = try load() else {
+            if let signIn {
+                return try await signIn()
+            }
             throw Fail(
                 "not signed in: run `xcodectl auth login` (on a runner: `xcodectl auth import` or set \(envKey))")
         }
+        return try await ensureTicket(cookies, source: source, signIn: signIn)
+    }
+
+    /// A session from `XCODECTL_SESSION` never signs in: the new session would go to the Keychain, and the
+    /// variable would still win on the next run.
+    static func ensureTicket(_ cookies: [Cookie], source: Source, signIn: SignIn?) async throws -> [Cookie] {
         if let ticket = cookies.first(where: { $0.name == ticketCookie }), !ticket.isExpired {
             return cookies
         }
-        let refreshed = try await refreshTicket(cookies)
-        if source == .keychain {
-            try save(refreshed)
+        do {
+            let refreshed = try await refreshTicket(cookies)
+            if source == .keychain {
+                try save(refreshed)
+            }
+            return refreshed
+        } catch let error as SessionExpired {
+            guard source == .keychain, let signIn else {
+                throw error
+            }
+            return try await signIn()
         }
-        return refreshed
     }
 
     /// POSTs the download list with the login session; Apple answers with a fresh ADCDownloadAuth cookie.
     static func refreshTicket(_ cookies: [Cookie]) async throws -> [Cookie] {
         guard cookies.contains(where: { $0.name == loginCookie && !$0.isExpired }) else {
-            throw Fail("Apple session expired: run `xcodectl auth login` again (then `auth export` for runners)")
+            throw SessionExpired(
+                description: "Apple session expired: run `xcodectl auth login` again (then `auth export` for runners)")
         }
         var request = URLRequest(url: listDownloads)
         request.httpMethod = "POST"
@@ -130,7 +162,7 @@ enum Session {
         switch code {
         case 0: break
 
-        case 1100: throw Fail("Apple session expired (1100): run `xcodectl auth login` again")
+        case 1100: throw SessionExpired(description: "Apple session expired (1100): run `xcodectl auth login` again")
 
         case 2100: throw Fail(
                 "Apple wants you to accept an updated agreement: open https://developer.apple.com/download/all, accept, then retry")
