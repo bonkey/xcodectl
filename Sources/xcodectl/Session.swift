@@ -91,7 +91,8 @@ enum Session {
     /// Returns cookies that include a valid download ticket, refreshing it from the login session when needed.
     static func ensureTicket() async throws -> [Cookie] {
         guard let (cookies, source) = try load() else {
-            throw Fail("not signed in: run `xcodectl login` (on a runner: `xcodectl session import` or set \(envKey))")
+            throw Fail(
+                "not signed in: run `xcodectl auth login` (on a runner: `xcodectl auth import` or set \(envKey))")
         }
         if let ticket = cookies.first(where: { $0.name == ticketCookie }), !ticket.isExpired {
             return cookies
@@ -106,7 +107,7 @@ enum Session {
     /// POSTs the download list with the login session; Apple answers with a fresh ADCDownloadAuth cookie.
     static func refreshTicket(_ cookies: [Cookie]) async throws -> [Cookie] {
         guard cookies.contains(where: { $0.name == loginCookie && !$0.isExpired }) else {
-            throw Fail("Apple session expired: run `xcodectl login` again (then `session export` for runners)")
+            throw Fail("Apple session expired: run `xcodectl auth login` again (then `auth export` for runners)")
         }
         var request = URLRequest(url: listDownloads)
         request.httpMethod = "POST"
@@ -122,14 +123,14 @@ enum Session {
             throw Fail("no HTTP response from Apple")
         }
         guard http.statusCode == 200 else {
-            throw Fail("Apple returned HTTP \(http.statusCode) for the download list; run `xcodectl login` again")
+            throw Fail("Apple returned HTTP \(http.statusCode) for the download list; run `xcodectl auth login` again")
         }
         let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
         let code = json["resultCode"] as? Int ?? -1
         switch code {
         case 0: break
 
-        case 1100: throw Fail("Apple session expired (1100): run `xcodectl login` again")
+        case 1100: throw Fail("Apple session expired (1100): run `xcodectl auth login` again")
 
         case 2100: throw Fail(
                 "Apple wants you to accept an updated agreement: open https://developer.apple.com/download/all, accept, then retry")
@@ -203,8 +204,11 @@ enum Keychain {
         }
     }
 
-    static func delete() {
-        SecItemDelete(base as CFDictionary)
+    static func delete() throws {
+        let status = SecItemDelete(base as CFDictionary)
+        guard status == errSecSuccess || status == errSecItemNotFound else {
+            throw Fail("keychain delete failed: \(message(status))\(hint(status))")
+        }
     }
 
     private static var base: [String: Any] {

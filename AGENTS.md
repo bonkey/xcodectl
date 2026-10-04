@@ -5,7 +5,7 @@ self-hosted CI Macs. README.md covers usage; this file covers how to work on the
 
 ## What it is, in one paragraph
 
-No Apple auth code. `login` opens a WKWebView (throwaway data store) on
+No Apple auth code. `auth login` opens a WKWebView (throwaway data store) on
 developer.apple.com; when Apple's portal reports a signed-in session (`myacinfo` cookie on the
 downloads page) the `apple.com` cookies go into the login Keychain as one generic-password item
 (service `xcodectl`, account `apple-session`). A download needs one short-lived cookie,
@@ -87,8 +87,9 @@ just install          # copy it to ~/.local/bin
 just lint / just fmt  # swiftformat
 ```
 
-Manual end-to-end check (needs an Apple Developer account): `xcodectl login`, `xcodectl list`,
-`xcodectl install <ver>`, `xcodectl approve <ver>`, `xcodectl select <ver>`, `xcodectl remove <ver>`.
+Manual end-to-end check (needs an Apple Developer account): `xcodectl auth login`,
+`xcodectl auth status`, `xcodectl list`, `xcodectl install <ver>`, `xcodectl approve <ver>`,
+`xcodectl select <ver>`, `xcodectl remove <ver>`.
 A hidden `xcodectl _download <url> <file>` exercises the downloader against any URL
 (`--with-ticket` adds the Apple cookies).
 

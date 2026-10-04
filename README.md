@@ -5,7 +5,8 @@ self-hosted CI Macs. No Apple login code inside: you sign in once in a window, t
 session in your Keychain and does the rest.
 
 ```
-xcodectl login                     sign in to Apple Developer (once)
+xcodectl auth login                sign in to Apple Developer (once)
+xcodectl auth status               whether Apple still accepts the session; exits 1 when not
 xcodectl list [<regex>]            two latest majors + running betas, and whether each runs on this Mac;
                                    --stable/--beta; regex searches all
 xcodectl list-installed            what is in /Applications, active one starred
@@ -25,7 +26,8 @@ xcodectl runtime list-installed    what is installed, including leftovers simctl
 xcodectl runtime install <platform> [<ver>]
 xcodectl runtime remove [<platform>] [<ver>]
 xcodectl runtime prune [--dry-run] leftover registrations that still hold disk space
-xcodectl session export | import   move the session to a runner
+xcodectl auth export | import      move the session to a runner
+xcodectl auth logout               delete the session from this Mac's Keychain
 ```
 
 `<ver>` is forgiving: `26.1`, `27`, `27 rc`, `27-rc1`, `27 beta 3`, `27A266a`, `latest`,
@@ -279,7 +281,7 @@ git clone https://github.com/bonkey/xcodectl && cd xcodectl && just install
 ## First run
 
 ```
-xcodectl login          # a window opens; sign in with your Apple ID and 2FA code
+xcodectl auth login     # a window opens; sign in with your Apple ID and 2FA code
 xcodectl install 26.6   # downloads (16 connections), expands, moves to /Applications/Xcode-26.6.app,
                         # then approves it (sudo: license, first-launch packages) and installs
                         # Command Line Tools 26.6 (sudo: softwareupdate)
@@ -291,8 +293,8 @@ PIN + touch) both work in the window. Passkeys stored in iCloud Keychain do not.
 
 ## CI (self-hosted runner)
 
-On your Mac: `xcodectl session export | pbcopy`. On the runner, once:
-`pbpaste | xcodectl session import` (stores it in that runner's Keychain). Then in the job:
+On your Mac: `xcodectl auth export | pbcopy`. On the runner, once:
+`pbpaste | xcodectl auth import` (stores it in that runner's Keychain). Then in the job:
 
 ```
 xcodectl install 26.6 --select
@@ -301,11 +303,11 @@ xcodectl install 26.6 --select
 Alternatively pass the blob per job as `XCODECTL_SESSION`; it is then used in memory only.
 
 Over plain ssh the login Keychain is locked (macOS gives ssh logins their own security session),
-so `session import` and `install` fail with "User interaction is not allowed". Run
+so `auth import` and `install` fail with "User interaction is not allowed". Run
 `security unlock-keychain` in that ssh session first, do the import from a GUI session (Screen
 Sharing), or use `XCODECTL_SESSION`. Runners launched in the logged-in session are not affected.
-Apple's login session lasts weeks; when a job fails with "session expired", run `login` and
-export again.
+Apple's login session lasts weeks; `xcodectl auth status` asks Apple whether it still holds and
+exits 1 when not. When it has expired, run `auth login` and export again.
 
 ## How it works
 

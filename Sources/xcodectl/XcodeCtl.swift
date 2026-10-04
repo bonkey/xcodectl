@@ -14,8 +14,7 @@ struct XcodeCtl: AsyncParsableCommand {
         abstract: "Install, approve, switch and remove Xcode versions.",
         version: version,
         subcommands: [
-            Login.self,
-            SessionCommand.self,
+            AuthCommand.self,
             List.self,
             ListInstalled.self,
             ReleaseNotesCommand.self,
@@ -176,19 +175,32 @@ struct Login: AsyncParsableCommand {
             try await Session.refreshTicket(cookies)
         }
         try Session.save(withTicket)
-        ui.success("Signed in. Runners: `xcodectl session export` here, `xcodectl session import` there.")
+        ui.success("Signed in. Runners: `xcodectl auth export` here, `xcodectl auth import` there.")
     }
 }
 
-// MARK: - SessionCommand
+// MARK: - AuthCommand
 
-struct SessionCommand: AsyncParsableCommand {
+struct AuthCommand: AsyncParsableCommand {
+    struct Status: AsyncParsableCommand {
+        static let configuration =
+            CommandConfiguration(abstract: "Ask Apple whether the session is still signed in; exits 1 when not.")
+
+        func run() async throws {
+            guard let (cookies, source) = try Session.load() else {
+                throw Fail("not signed in: run `xcodectl auth login`")
+            }
+            _ = try await Session.refreshTicket(cookies)
+            ui.success("Signed in (\(source == .keychain ? "Keychain" : Session.envKey)).")
+        }
+    }
+
     struct Export: AsyncParsableCommand {
         static let configuration = CommandConfiguration(abstract: "Print the session as one base64 line.")
 
         func run() async throws {
             guard let (cookies, _) = try Session.load() else {
-                throw Fail("not signed in: run `xcodectl login`")
+                throw Fail("not signed in: run `xcodectl auth login`")
             }
             try print(Session.encode(cookies))
         }
@@ -210,10 +222,22 @@ struct SessionCommand: AsyncParsableCommand {
         }
     }
 
+    struct Logout: AsyncParsableCommand {
+        static let configuration = CommandConfiguration(abstract: "Delete the session from this machine's Keychain.")
+
+        func run() async throws {
+            try Keychain.delete()
+            ui.success("Session removed from the Keychain.")
+            if ProcessInfo.processInfo.environment[Session.envKey]?.isEmpty == false {
+                ui.warning(WarningAlert(stringLiteral: "\(Session.envKey) is set and still signs you in"))
+            }
+        }
+    }
+
     static let configuration = CommandConfiguration(
-        commandName: "session",
-        abstract: "Move the Apple session to another machine.",
-        subcommands: [Export.self, Import.self])
+        commandName: "auth",
+        abstract: "Sign in to Apple Developer, check the session and move it to runners.",
+        subcommands: [Login.self, Status.self, Export.self, Import.self, Logout.self])
 }
 
 // MARK: - List

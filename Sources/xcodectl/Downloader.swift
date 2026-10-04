@@ -151,7 +151,7 @@ final class Downloader: NSObject, URLSessionDataDelegate {
         let html = (http.value(forHTTPHeaderField: "Content-Type") ?? "").contains("text/html")
         if http.url?.path.contains("unauthorized") == true || http.statusCode == 401 || http.statusCode == 403 || html {
             throw Fail(
-                "Apple rejected the download ticket: run `xcodectl login` again (runners: re-export the session)")
+                "Apple rejected the download ticket: run `xcodectl auth login` again (runners: re-export the session)")
         }
     }
 
