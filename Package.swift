@@ -8,7 +8,7 @@ let package = Package(
         .executable(name: "xcodectl", targets: ["xcodectl"]),
     ],
     dependencies: [
-        .package(url: "https://github.com/apple/swift-argument-parser", from: "1.5.0"),
+        .package(url: "https://github.com/apple/swift-argument-parser", from: "1.6.0"),
         .package(url: "https://github.com/tuist/Noora", from: "0.57.0"),
         .package(url: "https://github.com/saagarjha/unxip", from: "3.2.0"),
         .package(url: "https://github.com/bonkey/LibFido2Swift", from: "0.2.0"),

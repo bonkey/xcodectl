@@ -299,6 +299,17 @@ brew install bonkey/tap/xcodectl
 git clone https://github.com/bonkey/xcodectl && cd xcodectl && just install
 ```
 
+## Shell completion
+
+Commands, options and their values complete; `approve`, `select`, `remove` and
+`runtime install --xcode` also offer the installed versions.
+
+```
+eval "$(xcodectl --generate-completion-script zsh)"    # ~/.zshrc, after compinit
+eval "$(xcodectl --generate-completion-script bash)"   # ~/.bashrc
+xcodectl --generate-completion-script fish > ~/.config/fish/completions/xcodectl.fish
+```
+
 ## First run
 
 ```

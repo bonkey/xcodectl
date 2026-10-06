@@ -62,6 +62,12 @@ func resolveOrPick(_ version: String?, _ question: String) async throws -> Insta
     return try pickInstalled(question)
 }
 
+/// Shell completion for an argument naming an installed Xcode: each installed version once.
+func completeInstalledVersion(_: [String], _: Int, _: String) -> [String] {
+    var seen = Set<String>()
+    return Installed.all().map(\.version).filter { seen.insert($0).inserted }
+}
+
 /// A release from a version query, or from a latest / latest beta picker when none is given.
 func resolveOrPickRelease(_ version: String?, _ question: String) async throws -> Release {
     let releases = try await Releases.fetch()
@@ -780,7 +786,7 @@ struct Approve: AsyncParsableCommand {
         abstract: "Accept the license, run first launch and enable developer mode (sudo).",
         aliases: ["accept"])
 
-    @Argument(help: "Installed version; omit for a picker.")
+    @Argument(help: "Installed version; omit for a picker.", completion: .custom(completeInstalledVersion))
     var version: String?
 
     func run() async throws {
@@ -796,7 +802,7 @@ struct Select: AsyncParsableCommand {
     static let configuration =
         CommandConfiguration(abstract: "Make an installed Xcode the active one (xcode-select, sudo).")
 
-    @Argument(help: "Installed version; omit for a picker.")
+    @Argument(help: "Installed version; omit for a picker.", completion: .custom(completeInstalledVersion))
     var version: String?
 
     func run() async throws {
@@ -813,7 +819,7 @@ struct Remove: AsyncParsableCommand {
         abstract: "Delete an installed Xcode from /Applications, with the simulator runtimes only it uses.",
         discussion: "Runtimes another installed Xcode also uses stay.")
 
-    @Argument(help: "Installed version.")
+    @Argument(help: "Installed version.", completion: .custom(completeInstalledVersion))
     var version: String
 
     @Flag(help: "Keep the simulator runtimes this Xcode uses.")
@@ -1151,7 +1157,9 @@ struct RuntimeInstall: AsyncParsableCommand {
     @Argument(help: "Runtime version or build. Omit to take the one matching the Xcode used.")
     var version: String?
 
-    @Option(help: "Install through this Xcode instead of the active one.")
+    @Option(
+        help: "Install through this Xcode instead of the active one.",
+        completion: .custom(completeInstalledVersion))
     var xcode: String?
 
     func run() async throws {
