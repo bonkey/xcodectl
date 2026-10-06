@@ -28,6 +28,20 @@ final class InstalledRowsTests: XCTestCase {
         XCTAssertEqual(rows[2], ["  iOS 27.0", "24A434", "7.5 GB", "", ""])
     }
 
+    func testAnXcodeStillBeingSizedShowsThePlaceholder() {
+        let rows = installedRows([(app, nil, [])], active: nil, unknownSize: "…")
+        XCTAssertEqual(rows[1], ["27.0", "27A266a", "…", "/Applications/Xcode-27.0.app", ""])
+    }
+
+    /// `--no-size` skips the Xcode bundles; runtime sizes come from simctl for free.
+    func testAnUnsizedXcodeLeavesItsSizeEmptyButKeepsRuntimeSizes() throws {
+        let runtimes = try SimCtl.parse(makeSimctlOutput([
+            ("A", "com.apple.platform.iphonesimulator", "27.0", "24A434", "Ready", 8_067_000_161, "/a.asset/AssetData"),
+        ]))
+        let rows = installedRows([(app, nil, runtimes)], active: nil)
+        XCTAssertEqual(rows.map { $0[2] }, ["SIZE", "", "7.5 GB"])
+    }
+
     private let app = makeApp("Xcode-27.0.app", version: "27.0", build: "27A266a")
     private let beta = makeApp("Xcode-27.1-beta1.app", version: "27.1", build: "27A5001a")
 }

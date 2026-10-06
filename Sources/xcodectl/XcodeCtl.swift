@@ -313,8 +313,13 @@ struct ListInstalled: AsyncParsableCommand {
         commandName: "list-installed",
         abstract: "Xcode versions in /Applications with their size and the simulator runtimes they use.",
         discussion: """
-        A runtime shows under every Xcode that uses it. When simctl cannot tell, the runtimes are left out.
+        A runtime shows under every Xcode that uses it. When simctl cannot tell, the runtimes are left out. \
+        Sizing an Xcode reads every file in it, so at a terminal the table shows at once and the sizes \
+        fill in; elsewhere it prints once they are known.
         """)
+
+    @Flag(help: "Skip sizing each Xcode, which reads every file in its bundle.")
+    var noSize = false
 
     func run() async throws {
         let installed = Installed.all()
@@ -322,35 +327,57 @@ struct ListInstalled: AsyncParsableCommand {
             throw Fail("no Xcode installed in /Applications")
         }
         let registered = (try? SimCtl.runtimes()) ?? []
-        let details = await withTaskGroup(of: (Int, Int64, [InstalledRuntime]).self) { group in
+        let used = await withTaskGroup(of: (Int, [InstalledRuntime]).self) { group in
             for (index, xcode) in installed.enumerated() {
                 group.addTask {
-                    let chosen = (try? SimCtl.chosenRuntimeBuilds(for: xcode)) ?? []
-                    return (index, Installed.size(of: xcode.path), Runtimes.used(by: chosen, in: registered))
+                    (index, Runtimes.used(by: (try? SimCtl.chosenRuntimeBuilds(for: xcode)) ?? [], in: registered))
                 }
             }
-            var details = [(Int64, [InstalledRuntime])](repeating: (0, []), count: installed.count)
-            for await (index, size, runtimes) in group {
-                details[index] = (size, runtimes)
+            var used = [[InstalledRuntime]](repeating: [], count: installed.count)
+            for await (index, runtimes) in group {
+                used[index] = runtimes
             }
-            return details
+            return used
         }
-        printTable(installedRows(
-            zip(installed, details).map { ($0, $1.0, $1.1) },
-            active: Installed.activePath()?.standardizedFileURL.path))
+        let active = Installed.activePath()?.standardizedFileURL.path
+        var entries = zip(installed, used).map { (xcode: $0, size: Int64?.none, runtimes: $1) }
+        guard !noSize else {
+            printTable(installedRows(entries, active: active))
+            return
+        }
+        // Redrawing in place needs a terminal; a pipe or a CI log gets the finished table once.
+        let live = isInteractive ? Renderer() : nil
+        let draw = { live?.render(
+            tableLines(installedRows(entries, active: active, unknownSize: "…")).joined(separator: "\n"),
+            standardPipeline: StandardOutputPipeline()) }
+        draw()
+        await withTaskGroup(of: (Int, Int64).self) { group in
+            for (index, xcode) in installed.enumerated() {
+                group.addTask { (index, Installed.size(of: xcode.path)) }
+            }
+            for await (index, size) in group {
+                entries[index].size = size
+                draw()
+            }
+        }
+        if live == nil {
+            printTable(installedRows(entries, active: active))
+        }
     }
 }
 
-/// One row per Xcode, each followed by an indented row per runtime it uses.
+/// One row per Xcode, each followed by an indented row per runtime it uses. An Xcode without a
+/// size shows `unknownSize`.
 func installedRows(
-    _ installed: [(xcode: InstalledXcode, size: Int64, runtimes: [InstalledRuntime])],
-    active: String?)
+    _ installed: [(xcode: InstalledXcode, size: Int64?, runtimes: [InstalledRuntime])],
+    active: String?,
+    unknownSize: String = "")
     -> [[String]]
 {
     var rows = [["VERSION", "BUILD", "SIZE", "PATH", ""]]
     for (xcode, size, runtimes) in installed {
         let mark = xcode.path.standardizedFileURL.path == active ? "* active" : ""
-        rows.append([xcode.version, xcode.build, formatBytes(size), xcode.path.path, mark])
+        rows.append([xcode.version, xcode.build, size.map(formatBytes) ?? unknownSize, xcode.path.path, mark])
         for runtime in runtimes {
             rows.append(["  \(runtime.display)", runtime.build, formatBytes(runtime.size), "", ""])
         }

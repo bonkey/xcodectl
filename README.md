@@ -9,7 +9,8 @@ xcodectl auth login                sign in to Apple Developer (once)
 xcodectl auth status               whether Apple still accepts the session; exits 1 when not
 xcodectl list [<regex>]            two latest majors + running betas, and whether each runs on this Mac;
                                    --stable/--beta; regex searches all
-xcodectl list-installed            what is in /Applications with its size and the runtimes each Xcode uses
+xcodectl list-installed [--no-size]
+                                   what is in /Applications with its size and the runtimes each Xcode uses
 xcodectl release-notes [<ver>] [<ver2>] [--markdown | --plain] [--abridged] [--ask "<question>"]
                                    notes rendered in the terminal; two versions: what changed; no login needed
 xcodectl install [<ver>...] [--select] [--no-approve] [--no-clt] [--no-autologin]
@@ -67,6 +68,9 @@ VERSION     BUILD     SIZE    PATH
 ```
 
 Under each Xcode are the simulator runtimes it uses; one shared by several Xcodes shows under each.
+Sizing an Xcode reads every file in it and takes a second or so: at a terminal the table shows at
+once with `…` in place of each Xcode's size and fills in, a pipe gets the finished table.
+`--no-size` skips sizing.
 `xcodectl remove` deletes those runtimes along with the Xcode, except the ones another installed
 Xcode still uses; `--keep-runtimes` keeps them all.
 
