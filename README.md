@@ -9,7 +9,7 @@ xcodectl auth login                sign in to Apple Developer (once)
 xcodectl auth status               whether Apple still accepts the session; exits 1 when not
 xcodectl list [<regex>]            two latest majors + running betas, and whether each runs on this Mac;
                                    --stable/--beta; regex searches all
-xcodectl list-installed            what is in /Applications, active one starred
+xcodectl list-installed            what is in /Applications with its size and the runtimes each Xcode uses
 xcodectl release-notes [<ver>] [<ver2>] [--markdown | --plain] [--abridged] [--ask "<question>"]
                                    notes rendered in the terminal; two versions: what changed; no login needed
 xcodectl install [<ver>...] [--select] [--no-approve] [--no-clt] [--no-autologin]
@@ -21,7 +21,8 @@ xcodectl update [--dry-run] [--no-approve] [--no-clt] [--no-autologin]
 xcodectl install-clt [<ver>]       only the Command Line Tools of that Xcode version (sudo); no login needed
 xcodectl approve [<ver>]           license + first launch + developer mode (sudo); install does this by default
 xcodectl select [<ver>]            xcode-select (sudo)
-xcodectl remove <ver>
+xcodectl remove <ver> [--keep-runtimes]
+                                   also deletes the simulator runtimes no other installed Xcode uses
 xcodectl runtime list              simulator runtimes Apple offers; --platform, --stable/--beta, --all
 xcodectl runtime list-installed    what is installed, including leftovers simctl hides
 xcodectl runtime install <platform> [<ver>]
@@ -53,6 +54,21 @@ VERSION     BUILD     RELEASED    STATUS     MACOS
 MACOS is the range of macOS versions that Xcode runs on, behind `✓` when this Mac's macOS is in it
 and `✗` when it is too old or too new; here the Mac runs macOS 27.0. `--stable` and `--beta` narrow
 the list, a regex searches all versions: `xcodectl list '^16\.'`.
+
+```
+$ xcodectl list-installed
+VERSION     BUILD     SIZE    PATH
+27.2        27B5019j  3.3 GB  /Applications/Xcode-27.2-beta1.app  * active
+  iOS 27.2  24B5084k  7.6 GB
+27.1        27A9269   3.3 GB  /Applications/Xcode-27.1-beta1.app
+  iOS 27.1  24A94401  7.3 GB
+27.0        27A266a   3.3 GB  /Applications/Xcode-27.0.app
+  iOS 27.0  24A434    7.5 GB
+```
+
+Under each Xcode are the simulator runtimes it uses; one shared by several Xcodes shows under each.
+`xcodectl remove` deletes those runtimes along with the Xcode, except the ones another installed
+Xcode still uses; `--keep-runtimes` keeps them all.
 
 ## Release notes
 
@@ -361,8 +377,12 @@ exits 1 when not. When it has expired, run `auth login` and export again.
   OpenAI-compatible API, through AnyLanguageModel: the summary follows a fixed brief and set of
   headings, the answer comes in one to three sentences. Notes older than the documentation site (archived HTML, PDFs) are not
   available.
-- `remove`: deletes the app bundle. System packages, simulator runtimes and DerivedData are shared
-  between Xcode versions and stay; `runtime remove` deletes a runtime.
+- `remove`: deletes the simulator runtimes only this Xcode uses, then the app bundle. Which runtimes
+  an Xcode uses is what `simctl runtime match list` answers under that Xcode's `DEVELOPER_DIR`: the
+  runtime CoreSimulator picks for each of its SDKs, often a newer build than the SDK's own, so the
+  SDK builds in `data.json` cannot tell. Runtimes go first because simctl comes with Xcode and may
+  not run once the Xcode is gone. System packages and DerivedData are shared between Xcode versions
+  and stay.
 - Simulator runtimes: the catalog is Apple's public
   `https://devimages-cdn.apple.com/downloads/xcode/simulators/index2.dvtdownloadableindex`, read for
   the current `cryptexDiskImage` entries only and deduplicated to one row per build, preferring the

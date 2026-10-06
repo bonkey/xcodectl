@@ -107,16 +107,21 @@ func pickInstalled(_ question: String) throws -> InstalledXcode {
 }
 
 func printTable(_ rows: [[String]]) {
+    tableLines(rows).forEach { print($0) }
+}
+
+func tableLines(_ rows: [[String]]) -> [String] {
     guard let first = rows.first else {
-        return
+        return []
     }
     let widths = (0 ..< first.count).map { c in rows.map { $0[c].count }.max() ?? 0 }
-    for row in rows {
-        print(row.enumerated().map { $0.offset == row.count - 1 ? $0.element : $0.element.padding(
+    return rows.map { row in
+        row.enumerated().map { $0.offset == row.count - 1 ? $0.element : $0.element.padding(
             toLength: widths[$0.offset],
             withPad: " ",
             startingAt: 0) }
-            .joined(separator: "  ").trimmingCharacters(in: .whitespaces))
+            .joined(separator: "  ")
+            .replacingOccurrences(of: " +$", with: "", options: .regularExpression)
     }
 }
 
@@ -306,19 +311,51 @@ struct List: AsyncParsableCommand {
 struct ListInstalled: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "list-installed",
-        abstract: "Xcode versions in /Applications.")
+        abstract: "Xcode versions in /Applications with their size and the simulator runtimes they use.",
+        discussion: """
+        A runtime shows under every Xcode that uses it. When simctl cannot tell, the runtimes are left out.
+        """)
 
     func run() async throws {
         let installed = Installed.all()
         guard !installed.isEmpty else {
             throw Fail("no Xcode installed in /Applications")
         }
-        var rows = [["VERSION", "BUILD", "PATH", ""]]
-        for x in installed {
-            rows.append([x.version, x.build, x.path.path, Installed.isActive(x) ? "* active" : ""])
+        let registered = (try? SimCtl.runtimes()) ?? []
+        let details = await withTaskGroup(of: (Int, Int64, [InstalledRuntime]).self) { group in
+            for (index, xcode) in installed.enumerated() {
+                group.addTask {
+                    let chosen = (try? SimCtl.chosenRuntimeBuilds(for: xcode)) ?? []
+                    return (index, Installed.size(of: xcode.path), Runtimes.used(by: chosen, in: registered))
+                }
+            }
+            var details = [(Int64, [InstalledRuntime])](repeating: (0, []), count: installed.count)
+            for await (index, size, runtimes) in group {
+                details[index] = (size, runtimes)
+            }
+            return details
         }
-        printTable(rows)
+        printTable(installedRows(
+            zip(installed, details).map { ($0, $1.0, $1.1) },
+            active: Installed.activePath()?.standardizedFileURL.path))
     }
+}
+
+/// One row per Xcode, each followed by an indented row per runtime it uses.
+func installedRows(
+    _ installed: [(xcode: InstalledXcode, size: Int64, runtimes: [InstalledRuntime])],
+    active: String?)
+    -> [[String]]
+{
+    var rows = [["VERSION", "BUILD", "SIZE", "PATH", ""]]
+    for (xcode, size, runtimes) in installed {
+        let mark = xcode.path.standardizedFileURL.path == active ? "* active" : ""
+        rows.append([xcode.version, xcode.build, formatBytes(size), xcode.path.path, mark])
+        for runtime in runtimes {
+            rows.append(["  \(runtime.display)", runtime.build, formatBytes(runtime.size), "", ""])
+        }
+    }
+    return rows
 }
 
 // MARK: - ReleaseNotesCommand
@@ -745,15 +782,23 @@ struct Select: AsyncParsableCommand {
 // MARK: - Remove
 
 struct Remove: AsyncParsableCommand {
-    static let configuration = CommandConfiguration(abstract: "Delete an installed Xcode from /Applications.")
+    static let configuration = CommandConfiguration(
+        abstract: "Delete an installed Xcode from /Applications, with the simulator runtimes only it uses.",
+        discussion: "Runtimes another installed Xcode also uses stay.")
 
     @Argument(help: "Installed version.")
     var version: String
+
+    @Flag(help: "Keep the simulator runtimes this Xcode uses.")
+    var keepRuntimes = false
 
     func run() async throws {
         let path = try await target()
         let name = path.lastPathComponent
         let wasActive = Installed.isActive(path)
+        if !keepRuntimes {
+            try await removeOwnRuntimes(of: path)
+        }
         try await ui.progressStep(
             message: "Removing \(name)",
             successMessage: "Removed \(name)",
@@ -772,6 +817,34 @@ struct Remove: AsyncParsableCommand {
         let next = isInteractive ? try pickInstalled("That was the active Xcode. Select which one now?") : remaining[0]
         try Installer.select(next)
         ui.success(SuccessAlert(stringLiteral: "Active: \(next.path.path)"))
+    }
+
+    /// Runtimes go before the Xcode: only the Xcode can say which runtimes it uses, and simctl comes
+    /// with Xcode, so it may not run once the Xcode is gone. A bundle an earlier remove left
+    /// incomplete has nothing to ask.
+    private func removeOwnRuntimes(of app: URL) async throws {
+        guard let xcode = Installed.read(app) else {
+            return
+        }
+        let exclusive: [InstalledRuntime]
+        do {
+            let others = try Installed.all()
+                .filter { $0.path.standardizedFileURL.path != app.standardizedFileURL.path }
+                .map(SimCtl.chosenRuntimeBuilds(for:))
+            exclusive = try Runtimes.exclusive(
+                to: SimCtl.chosenRuntimeBuilds(for: xcode),
+                others: others,
+                in: SimCtl.runtimes())
+        } catch {
+            ui.warning(WarningAlert(stringLiteral:
+                "cannot tell which simulator runtimes \(xcode.name) uses (\(error)); keeping them"))
+            return
+        }
+        do {
+            try await removeRuntimes(exclusive)
+        } catch {
+            throw Fail("\(error); `xcodectl remove \(version) --keep-runtimes` removes the Xcode alone")
+        }
     }
 
     /// The bundle to delete: an installed Xcode, or one a `remove` that failed part way through left

@@ -42,7 +42,7 @@ Sources/xcodectl/
   Downloader.swift   parallel ranged download + resume
   Install.swift      installed scan, unxip, move, approve, Command Line Tools, select, remove
   Requirements.swift Apple's system requirements page (newest macOS per Xcode), whether a release runs on this Mac
-  Runtimes.swift     simulator runtime catalog, install through xcodebuild, removal through simctl
+  Runtimes.swift     simulator runtime catalog, install through xcodebuild, removal through simctl, runtimes an Xcode uses
   Shell.swift        Fail error, paths, sudo(), runTool(), small system helpers
   Version.swift      `let version = "x.y.z"`, bumped by `just release`
 ```
@@ -59,6 +59,11 @@ Sources/xcodectl/
   so `runtime install` drives that, aimed at a chosen Xcode with `DEVELOPER_DIR` so it needs neither
   `xcode-select` nor sudo. Tools whose output is parsed run in the C locale (`runTool`), because
   xcodebuild otherwise prints progress as "3,56 GB".
+- The runtimes an Xcode uses (`list-installed`, `remove`) are the ready registrations whose build is a
+  `chosenRuntimeBuild` of `simctl runtime match list -j` run under that Xcode's `DEVELOPER_DIR`. Not the
+  SDK builds in `data.json`: CoreSimulator often picks a newer runtime build than the SDK's own.
+  `remove` keeps runtimes another installed Xcode uses, and deletes runtimes before the Xcode,
+  because simctl may not run once it is gone.
 - Concurrency: AppKit owns the main thread (`main.swift` starts `NSApp.run()`), the command runs
   in a detached task. Never block the main thread: WebKit and unxip (DispatchIO on the main queue)
   need it. Blocking library calls (libfido2 touch wait) go in `Task.detached`.

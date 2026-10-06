@@ -86,6 +86,33 @@ enum Installed {
         return InstalledXcode(path: app, version: version, build: build)
     }
 
+    /// Disk space a bundle takes, counted the way `du` does: allocated blocks, a hard-linked file
+    /// once. Xcode hard-links tens of thousands of files, so summing every path overstates it by a tenth.
+    static func size(of app: URL) -> Int64 {
+        let keys: [URLResourceKey] = [.totalFileAllocatedSizeKey, .linkCountKey]
+        guard let walker = FileManager.default.enumerator(at: app, includingPropertiesForKeys: keys) else {
+            return 0
+        }
+        var linked = Set<NSObject>()
+        var total: Int64 = 0
+        for case let file as URL in walker {
+            guard let values = try? file.resourceValues(forKeys: Set(keys)),
+                  let size = values.totalFileAllocatedSize
+            else {
+                continue
+            }
+            if (values.linkCount ?? 1) > 1,
+               let id = (try? file.resourceValues(forKeys: [.fileResourceIdentifierKey]))?
+               .fileResourceIdentifier as? NSObject,
+               !linked.insert(id).inserted
+            {
+                continue
+            }
+            total += Int64(size)
+        }
+        return total
+    }
+
     /// The app `xcode-select -p` points to (via /var/db/xcode_select_link).
     static func activePath() -> URL? {
         guard let target = try? FileManager.default.destinationOfSymbolicLink(atPath: Paths.xcodeSelectLink)

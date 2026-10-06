@@ -29,6 +29,22 @@ final class InstalledTests: XCTestCase {
         XCTAssertNil(Installed.leftover(matching: "27A266a", in: candidates))
     }
 
+    /// Xcode hard-links thousands of files; the space they take counts once, the way `du` counts it.
+    func testSizeCountsAHardLinkedFileOnce() throws {
+        let app = FileManager.default.temporaryDirectory.appendingPathComponent("SizeTest-\(UUID().uuidString).app")
+        try FileManager.default.createDirectory(
+            at: app.appendingPathComponent("Contents"),
+            withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: app) }
+        let file = app.appendingPathComponent("Contents/tool")
+        try Data(repeating: 1, count: 1_048_576).write(to: file)
+        let single = Installed.size(of: app)
+        try FileManager.default.linkItem(at: file, to: app.appendingPathComponent("Contents/tool-link"))
+
+        XCTAssertGreaterThanOrEqual(single, 1_048_576)
+        XCTAssertEqual(Installed.size(of: app), single)
+    }
+
     private func bundle(_ name: String) -> URL {
         URL(fileURLWithPath: "/Applications").appendingPathComponent(name)
     }

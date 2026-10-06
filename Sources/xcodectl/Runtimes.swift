@@ -247,6 +247,23 @@ enum Runtimes {
         }
     }
 
+    /// The ready registrations among `chosen` runtime builds. A chosen build without one is a platform
+    /// that has no runtime installed.
+    static func used(by chosen: Set<String>, in installed: [InstalledRuntime]) -> [InstalledRuntime] {
+        installed.filter { $0.isReady && chosen.contains($0.build.lowercased()) }
+    }
+
+    /// The runtimes one Xcode uses that none of the `others` does. Several Xcodes often share a
+    /// runtime, so removing an Xcode removes only these.
+    static func exclusive(
+        to chosen: Set<String>,
+        others: [Set<String>],
+        in installed: [InstalledRuntime])
+        -> [InstalledRuntime]
+    {
+        used(by: others.reduce(chosen) { $0.subtracting($1) }, in: installed)
+    }
+
     /// Picks one runtime of a platform. A bare version prefers the release over a beta of the same
     /// version; a build matches exactly.
     static func resolve(
@@ -370,6 +387,23 @@ enum SimCtl {
         }
     }
 
+    /// The runtime builds an Xcode uses, lowercased, one per SDK it ships: what CoreSimulator picks
+    /// for that SDK, which can be a newer build than the SDK's own. `DEVELOPER_DIR` asks a specific
+    /// Xcode without `xcode-select`.
+    static func chosenRuntimeBuilds(for xcode: InstalledXcode) throws -> Set<String> {
+        try parseMatches(Data(run(
+            executable,
+            ["runtime", "match", "list", "-j"],
+            environment: ["DEVELOPER_DIR": xcode.developerDir.path]).utf8))
+    }
+
+    static func parseMatches(_ data: Data) throws -> Set<String> {
+        guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: [String: Any]] else {
+            throw Fail("cannot read `simctl runtime match list -j` output")
+        }
+        return Set(root.values.compactMap { ($0["chosenRuntimeBuild"] as? String)?.lowercased() })
+    }
+
     /// Deletes a registration and, once it was the last one referencing the asset, its MobileAsset.
     ///
     /// simctl returns while the runtime is still in `Deleting` and the asset is still on disk, so
@@ -393,8 +427,13 @@ enum SimCtl {
     }
 
     @discardableResult
-    private static func run(_ executable: URL, _ arguments: [String]) throws -> String {
-        try runTool(executable, ["simctl"] + arguments)
+    private static func run(
+        _ executable: URL,
+        _ arguments: [String],
+        environment: [String: String] = [:])
+        throws -> String
+    {
+        try runTool(executable, ["simctl"] + arguments, environment: environment)
     }
 }
 

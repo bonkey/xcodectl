@@ -339,3 +339,73 @@ final class RuntimeSelectionTests: XCTestCase {
         XCTAssertNil(RuntimeSelection(argument: ""))
     }
 }
+
+// MARK: - RuntimeMatchTests
+
+final class RuntimeMatchTests: XCTestCase {
+    /// `simctl runtime match list -j` for Xcode 27.0 with only iOS installed: iOS resolves to a newer
+    /// runtime build than its SDK, the others to their SDK build although nothing is installed.
+    func testParseMatchesReadsTheChosenRuntimeOfEverySDK() throws {
+        let output = """
+        {
+          "appletvos27.0" : {"chosenRuntimeBuild" : "24J360", "defaultBuild" : "24J360", "sdkBuild" : "24J360"},
+          "iphoneos27.0" : {"chosenRuntimeBuild" : "24A434", "defaultBuild" : "24A430", "sdkBuild" : "24A430"},
+          "watchos27.0" : {"chosenRuntimeBuild" : "24R360", "defaultBuild" : "24R360", "sdkBuild" : "24R360"}
+        }
+        """
+        XCTAssertEqual(try SimCtl.parseMatches(Data(output.utf8)), ["24j360", "24a434", "24r360"])
+    }
+
+    func testParseMatchesRejectsOutputThatIsNotJSON() {
+        XCTAssertThrowsError(try SimCtl.parseMatches(Data("not json".utf8)))
+    }
+
+    /// A chosen build with no registration behind it is a platform without a runtime installed.
+    func testUsedTakesTheInstalledRuntimesWithAChosenBuild() throws {
+        let used = try Runtimes.used(by: ["24a434", "24r360"], in: installed())
+        XCTAssertEqual(used.map(\.build), ["24A434"])
+    }
+
+    func testUsedSkipsRegistrationsThatAreNotReady() throws {
+        let installed = try SimCtl.parse(makeSimctlOutput([
+            ("A", "com.apple.platform.iphonesimulator", "27.0", "24A434", "Unusable", 1, "/x.asset/AssetData"),
+        ]))
+        XCTAssertEqual(Runtimes.used(by: ["24a434"], in: installed), [])
+    }
+
+    func testExclusiveKeepsWhatAnotherXcodeUses() throws {
+        let exclusive = try Runtimes.exclusive(
+            to: ["24a434", "24j360"],
+            others: [["24a94401", "24j360"]],
+            in: installed())
+        XCTAssertEqual(exclusive.map(\.build), ["24A434"])
+    }
+
+    func testExclusiveWithoutOtherXcodesIsEverythingUsed() throws {
+        let exclusive = try Runtimes.exclusive(to: ["24a434", "24j360"], others: [], in: installed())
+        XCTAssertEqual(exclusive.map(\.build), ["24A434", "24J360"])
+    }
+
+    /// iOS 27.0 and 27.1 plus tvOS 27.0, all ready.
+    private func installed() throws -> [InstalledRuntime] {
+        try SimCtl.parse(makeSimctlOutput([
+            ("A", "com.apple.platform.iphonesimulator", "27.0", "24A434", "Ready", 8_067_000_161, "/a.asset/AssetData"),
+            (
+                "B",
+                "com.apple.platform.iphonesimulator",
+                "27.1",
+                "24A94401",
+                "Ready",
+                7_873_719_649,
+                "/b.asset/AssetData"),
+            (
+                "C",
+                "com.apple.platform.appletvsimulator",
+                "27.0",
+                "24J360",
+                "Ready",
+                3_300_000_000,
+                "/c.asset/AssetData"),
+        ]))
+    }
+}
