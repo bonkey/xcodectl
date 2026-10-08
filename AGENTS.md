@@ -23,7 +23,11 @@ and `remove` deletes with `sudo rm`.
 Simulator runtimes: the catalog is Apple's public `index2.dvtdownloadableindex`. The
 `cryptexDiskImage` format (iOS 18, tvOS 18, watchOS 11, visionOS 2 and newer) needs no Apple account:
 `install <platform>` (or `install --runtimes ios,watchos|all`) hands the download to that Xcode's
-`xcodebuild`. The older `diskImage` format (back to iOS 16, tvOS 16, watchOS 9, visionOS 1) is a `.dmg`
+`xcodebuild`. Xcode 27 and newer refuse the cryptexes before iOS 26 (their index entries and assets
+name no architectures), so through those `install <platform>` looks the build up on Apple's public
+asset server (`gdmf.apple.com/v2/assets`), downloads the encrypted `.aar` with the downloader,
+expands its disk image in-process with AppleArchive and registers it with `simctl runtime add`.
+The older `diskImage` format (back to iOS 16, tvOS 16, watchOS 9, visionOS 1) is a `.dmg`
 behind the same `ADCDownloadAuth` ticket as an Xcode download; `install <platform>` fetches it with the
 downloader and registers it with `simctl runtime add`. Installer packages (iOS 15 and older) are not read.
 Security keys: WebKit refuses WebAuthn for apple.com in third-party apps, so a user script
@@ -45,6 +49,7 @@ Sources/xcodectl/
   Install.swift      installed scan, unxip, move, approve, Command Line Tools, select, remove
   Requirements.swift Apple's system requirements page (newest macOS per Xcode), whether a release runs on this Mac
   Runtimes.swift     simulator runtime catalog, install through xcodebuild or simctl, removal through simctl, runtimes an Xcode uses
+  RuntimeAsset.swift asset server lookup of a cryptex runtime, checksum, AEA/AppleArchive expansion of its .aar (only file importing AppleArchive)
   Shell.swift        Fail error, paths, sudo(), runTool(), small system helpers
   Version.swift      `let version = "x.y.z"`, bumped by `just release`
 ```
@@ -55,11 +60,15 @@ Sources/xcodectl/
   more without a reason that survives "could Foundation do this".
 - No external processes except `/usr/bin/sudo` (approve, CLT install, select, install and remove fallbacks) and, for
   simulator runtimes only, that Xcode's `xcodebuild` and `xcrun simctl`. Networking is URLSession; XIP
-  expansion is libunxip.
-- Cryptex simulator runtimes are the one thing this tool does not download itself. Apple delivers them
-  as MobileAssets into a SIP-protected store that only `xcodebuild -downloadPlatform` can write,
-  so `install <platform>` drives that, aimed at a chosen Xcode with `DEVELOPER_DIR` so it needs neither
-  `xcode-select` nor sudo. Disk-image runtimes are a plain download; `simctl runtime add` copies the
+  expansion is libunxip, runtime `.aar` expansion AppleArchive.
+- Cryptex simulator runtimes are the one thing this tool does not download itself, with one exception.
+  Apple delivers them as MobileAssets into a SIP-protected store that only `xcodebuild -downloadPlatform`
+  can write, so `install <platform>` drives that, aimed at a chosen Xcode with `DEVELOPER_DIR` so it needs
+  neither `xcode-select` nor sudo. The exception: through Xcode 27 or newer, a cryptex whose index entry
+  has no `architectures` (everything before iOS 26) is fetched from the asset server, expanded to its
+  `.dmg` and added with `simctl runtime add`, because Xcode 27 requires architectures in both the index
+  entry and the asset and no setting changes that. Hosts on Xcode 26 and older keep xcodebuild for all
+  cryptexes. Disk-image runtimes are a plain download; `simctl runtime add` copies the
   image into CoreSimulator's store without sudo, so the download goes afterwards. Xcode 27's xcodebuild
   does not offer them. The add also leaves a staged copy in CoreSimulator's cryptex inbox that holds the
   image's full size once the runtime is deleted; `simctl runtime scan-and-mount` right after clears it. Tools whose output is parsed run in the C locale (`runTool`), because

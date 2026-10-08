@@ -227,6 +227,49 @@ final class RuntimesTests: XCTestCase {
         XCTAssertTrue(runtimes[0].runs(onXcode: "16.1"))
     }
 
+    // MARK: - Asset server
+
+    /// Xcode 27 refuses a cryptex the index lists without architectures, which is every one before
+    /// iOS 26, so this tool installs those itself.
+    func testCryptexWithoutArchitecturesInstallsFromTheAssetServerThroughXcode27AndNewer() throws {
+        let runtime = try makeCryptexWithoutArchitectures()
+        XCTAssertTrue(runtime.installsFromAssetServer(onXcode: "27.0"))
+        XCTAssertTrue(runtime.installsFromAssetServer(onXcode: "27.2"))
+        XCTAssertTrue(runtime.installsFromAssetServer(onXcode: "28.0"))
+    }
+
+    func testXcode26InstallsACryptexWithoutArchitecturesThroughXcodebuild() throws {
+        let runtime = try makeCryptexWithoutArchitectures()
+        XCTAssertFalse(runtime.installsFromAssetServer(onXcode: "26.4"))
+        XCTAssertFalse(runtime.installsFromAssetServer(onXcode: "26.4.1"))
+    }
+
+    func testCryptexWithArchitecturesInstallsThroughXcodebuild() throws {
+        let runtimes = try Runtimes.parse(makeIndex([
+            makeEntry(platform: "com.apple.platform.iphoneos", version: "26.0", build: "23A339"),
+            makeEntry(
+                platform: "com.apple.platform.appletvos",
+                version: "26.0",
+                build: "23J352",
+                architectures: ["arm64", "x86_64"]),
+        ]))
+        XCTAssertEqual(runtimes.count, 2)
+        for runtime in runtimes {
+            XCTAssertFalse(runtime.installsFromAssetServer(onXcode: "27.0"), runtime.build)
+        }
+    }
+
+    func testDiskImageNeverInstallsFromTheAssetServer() throws {
+        var entry = makeEntry(
+            platform: "com.apple.platform.iphoneos",
+            version: "17.5",
+            build: "21F79",
+            contentType: "diskImage")
+        entry["architectures"] = nil
+        let runtimes = try Runtimes.parse(makeIndex([entry]))
+        XCTAssertFalse(runtimes[0].installsFromAssetServer(onXcode: "27.0"))
+    }
+
     // MARK: - Size estimate
 
     func testEstimatedSizeSumsTheNewestReleaseOfEachPlatform() throws {
@@ -249,6 +292,13 @@ final class RuntimesTests: XCTestCase {
             makeEntry(platform: "com.apple.platform.iphoneos", version: "27.0", build: "24A1", size: 8_000_000_000),
         ]))
         XCTAssertEqual(Runtimes.estimatedSize([.ios], in: runtimes), 8_000_000_000)
+    }
+
+    /// iOS 18.6 the way the index lists it: a cryptex without an `architectures` key.
+    private func makeCryptexWithoutArchitectures() throws -> SimulatorRuntime {
+        var entry = makeEntry(platform: "com.apple.platform.iphoneos", version: "18.6", build: "22G86")
+        entry["architectures"] = nil
+        return try XCTUnwrap(Runtimes.parse(makeIndex([entry])).first)
     }
 }
 

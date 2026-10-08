@@ -591,7 +591,9 @@ struct Install: AsyncParsableCommand {
             discussion: """
             A platform first (ios, tvos, watchos, visionos) installs that simulator runtime instead, through \
             the active Xcode or the one --xcode names: the version or build given after the platform, else \
-            the one matching that Xcode. A runtime older than iOS 18 downloads with the Apple session.
+            the one matching that Xcode. A runtime older than iOS 18 downloads with the Apple session. \
+            Through Xcode 27 or newer, one older than iOS 26 downloads from Apple's asset server, without \
+            xcodebuild, which no longer offers it.
             """)
 
     @Argument(help: """
@@ -728,6 +730,10 @@ struct Install: AsyncParsableCommand {
         }
         if let source = runtime.source {
             try await installDiskImageRuntime(runtime, from: source, autologin: autologin, using: host)
+            return
+        }
+        if runtime.installsFromAssetServer(onXcode: host.version) {
+            try await installAssetRuntime(runtime, using: host)
             return
         }
         try await downloadRuntime(
@@ -1278,6 +1284,56 @@ func installDiskImageRuntime(
         try SimCtl.add(image, using: xcode)
     }
     try? FileManager.default.removeItem(at: image)
+}
+
+/// A cryptex runtime that Xcode 27 and newer cannot download. Apple's asset server names its archive
+/// and key; the archive downloads like an Xcode but without a session, the disk image inside it is
+/// expanded next to it, and simctl registers that. The archive goes once expanded and the image once
+/// registered, which keeps the peak disk use near twice the runtime's size.
+func installAssetRuntime(_ runtime: SimulatorRuntime, using xcode: InstalledXcode) async throws {
+    let label = "\(runtime.display) (\(runtime.build))"
+    let registered = (try? SimCtl.runtimes()) ?? []
+    guard !registered.contains(where: { $0.isReady && $0.build.lowercased() == runtime.build.lowercased() }) else {
+        ui.info(InfoAlert(stringLiteral: "\(label) is already installed"))
+        return
+    }
+    let asset = try await RuntimeAsset.lookup(runtime)
+    try Paths.ensureCache()
+    let archive = Paths.cache.appendingPathComponent(asset.url.lastPathComponent)
+    if !FileManager.default.fileExists(atPath: archive.path) {
+        let connections = Int(ProcessInfo.processInfo.environment["XCODECTL_CONNECTIONS"] ?? "") ?? Downloader
+            .defaultConnections
+        let downloader = Downloader(url: asset.url, cookieHeader: "", destination: archive, connections: connections)
+        try await ui.progressBarStep(
+            message: "Downloading \(label)",
+            successMessage: "Downloaded \(label)",
+            errorMessage: "Download failed")
+        { update in
+            try await downloader.run(progress: update)
+        }
+    }
+    let directory = Paths.cache.appendingPathComponent(runtime.build)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let image = try await ui.progressStep(
+        message: "Expanding \(label)",
+        successMessage: "Expanded \(label)",
+        errorMessage: "Expanding \(label) failed",
+        showSpinner: true)
+    { _ in
+        try asset.verify(archive)
+        try? FileManager.default.removeItem(at: directory)
+        let expanded = try asset.extractDiskImage(from: archive, into: directory)
+        try FileManager.default.removeItem(at: archive)
+        return expanded
+    }
+    try await ui.progressStep(
+        message: "Adding \(label)",
+        successMessage: "Installed \(label)",
+        errorMessage: "Installing \(label) failed",
+        showSpinner: true)
+    { _ in
+        try SimCtl.add(image, using: xcode)
+    }
 }
 
 /// Deletes registrations and reports whether the disk space actually came back. CoreSimulator frees

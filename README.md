@@ -265,6 +265,13 @@ xcodectl install ios 17           # the newest iOS 17 release: 17.5
 xcodectl install ios --xcode 27.0 # through that Xcode, without selecting it
 ```
 
+Xcode 27 no longer downloads runtimes older than iOS 26, tvOS 26, watchOS 26 and visionOS 26. Through
+Xcode 27 or newer, `install` fetches iOS 18, tvOS 18, watchOS 11 and visionOS 2 runtimes, point
+releases and betas included, from Apple's public asset server itself and adds them with `simctl`, still
+without a login. That needs free space for about twice the runtime while it installs, and the installed
+runtime keeps taking about that much: CoreSimulator stores both the runtime bundle and the cryptex
+inside it, 16.5 GB for iOS 18.6.
+
 Install Xcode and its runtimes in one go:
 
 ```
@@ -408,7 +415,14 @@ exits 1 when not. When it has expired, run `auth login` and export again.
   Apple Silicon artifact over the universal one. Apple delivers cryptexes as MobileAssets into a
   SIP-protected store that only Xcode can write, so their download is `xcodebuild
   -downloadPlatform`, pointed at a chosen Xcode through `DEVELOPER_DIR` so it needs neither
-  `xcode-select` nor sudo; without a version, Xcode picks the runtime matching itself. A disk image
+  `xcode-select` nor sudo; without a version, Xcode picks the runtime matching itself. Xcode 27 and
+  newer refuse a cryptex whose index entry and MobileAsset name no architectures, which is every one
+  before iOS 26, so through those Xcodes the tool installs such a runtime itself: Apple's public asset
+  server (`gdmf.apple.com/v2/assets`, the request xcodebuild makes) answers with the URL of an
+  encrypted `.aar` on `updates.cdn-apple.com`, its key and its SHA-256. The archive downloads like an
+  Xcode into `~/.xcodectl/cache/`, without a session, and is checked against that SHA-256; AppleArchive
+  decrypts it and expands the disk image inside it next to it, and `simctl runtime add` registers that.
+  The archive goes once expanded and the image once registered. A disk image
   is a `.dmg` on `download.developer.apple.com` behind the same ticket as an Xcode; it downloads like
   one into `~/.xcodectl/cache/` and `simctl runtime add` registers it, copying the image into
   CoreSimulator's own store, so the download is deleted afterwards. The add also leaves a staged copy
@@ -418,5 +432,6 @@ exits 1 when not. When it has expired, run `auth login` and export again.
   referencing it is gone and says nothing when it skips that, so the tool waits for the deletion to
   finish and then reports whether the space actually came back.
 
-Files: `~/.xcodectl/cache/` (downloads in flight, cached version list, system requirements page and
-simulator runtime index) and, only during such an install, `~/.xcodectl/tmp/`. Nothing else.
+Files: `~/.xcodectl/cache/` (downloads in flight, a runtime image being added, cached version list,
+system requirements page and simulator runtime index) and, only during such an install,
+`~/.xcodectl/tmp/`. Nothing else.

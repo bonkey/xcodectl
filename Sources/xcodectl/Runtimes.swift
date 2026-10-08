@@ -66,9 +66,9 @@ enum RuntimePlatform: String, CaseIterable {
 // MARK: - SimulatorRuntime
 
 /// One downloadable runtime from Apple's index. From iOS 18, tvOS 18, watchOS 11 and visionOS 2 on,
-/// a `cryptexDiskImage` that Apple delivers as a MobileAsset, so only Xcode can install it. Before
-/// that, back to iOS 16, tvOS 16, watchOS 9 and visionOS 1, a `diskImage` at `source`, downloaded
-/// with the Apple session. The installer packages of older versions are not listed.
+/// a `cryptexDiskImage` that Apple delivers as a MobileAsset, which Xcode installs. Before that, back
+/// to iOS 16, tvOS 16, watchOS 9 and visionOS 1, a `diskImage` at `source`, downloaded with the
+/// Apple session. The installer packages of older versions are not listed.
 struct SimulatorRuntime: Equatable {
     let name: String
     let platform: RuntimePlatform
@@ -108,6 +108,13 @@ struct SimulatorRuntime: Equatable {
             return false
         }
         return true
+    }
+
+    /// Whether this tool installs the cryptex itself, from Apple's asset server, instead of xcodebuild.
+    /// Xcode 27 and newer download a cryptex only when the index and the asset both name its
+    /// architectures, which they do from iOS 26, tvOS 26, watchOS 26 and visionOS 26 on.
+    func installsFromAssetServer(onXcode xcodeVersion: String) -> Bool {
+        source == nil && architectures.isEmpty && versionAtLeast(xcodeVersion, "27")
     }
 }
 
