@@ -355,6 +355,18 @@ final class RuntimeInstallerTests: XCTestCase {
             "Error Domain=SimDiskImageErrorDomain Code=9 \"Duplicate of image at /Library/...\""))
         XCTAssertFalse(RuntimeInstaller.isAlreadyInstalled("Error Domain=NSPOSIXErrorDomain Code=22"))
     }
+
+    func testAlreadyInstalledRecognisesAnAlreadyDownloadedRuntime() {
+        XCTAssertTrue(RuntimeInstaller.isAlreadyInstalled(
+            "Finding content...\niOS 24B5084k (arm64Only) is already downloaded."))
+        XCTAssertFalse(RuntimeInstaller.isAlreadyInstalled("Finding content...\nDownloading iOS 27.2: 41.5 %"))
+    }
+
+    /// Without a build, xcodebuild finds nothing left to download for the runtime its Xcode uses.
+    func testAlreadyInstalledRecognisesNoNeededDownloadables() {
+        XCTAssertTrue(RuntimeInstaller.isAlreadyInstalled(
+            "Finding content...\nNo needed downloadables found for arm64Only"))
+    }
 }
 
 // MARK: - RuntimeSelectionTests

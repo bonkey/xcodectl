@@ -499,8 +499,12 @@ enum RuntimeInstaller {
         return min(max(percent / 100, 0), 1)
     }
 
-    /// xcodebuild reports an already-installed runtime as a duplicate image rather than succeeding.
+    /// xcodebuild fails on a runtime it already has rather than succeeding: with a duplicate image
+    /// error, "is already downloaded" for a given build, or "No needed downloadables found" when it
+    /// picks the runtime for its Xcode.
     static func isAlreadyInstalled(_ message: String) -> Bool {
         message.contains("SimDiskImageErrorDomain") && message.contains("Duplicate of ")
+            || message.contains(" is already downloaded.")
+            || message.contains("No needed downloadables found")
     }
 }
