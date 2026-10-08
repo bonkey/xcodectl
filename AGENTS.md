@@ -61,7 +61,8 @@ Sources/xcodectl/
   so `install <platform>` drives that, aimed at a chosen Xcode with `DEVELOPER_DIR` so it needs neither
   `xcode-select` nor sudo. Disk-image runtimes are a plain download; `simctl runtime add` copies the
   image into CoreSimulator's store without sudo, so the download goes afterwards. Xcode 27's xcodebuild
-  does not offer them. Tools whose output is parsed run in the C locale (`runTool`), because
+  does not offer them. The add also leaves a staged copy in CoreSimulator's cryptex inbox that holds the
+  image's full size once the runtime is deleted; `simctl runtime scan-and-mount` right after clears it. Tools whose output is parsed run in the C locale (`runTool`), because
   xcodebuild otherwise prints progress as "3,56 GB".
 - The runtimes an Xcode uses (`installed`, `remove`) are the ready registrations whose build is a
   `chosenRuntimeBuild` of `simctl runtime match list -j` run under that Xcode's `DEVELOPER_DIR`. Not the

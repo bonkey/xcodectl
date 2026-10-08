@@ -411,7 +411,9 @@ exits 1 when not. When it has expired, run `auth login` and export again.
   `xcode-select` nor sudo; without a version, Xcode picks the runtime matching itself. A disk image
   is a `.dmg` on `download.developer.apple.com` behind the same ticket as an Xcode; it downloads like
   one into `~/.xcodectl/cache/` and `simctl runtime add` registers it, copying the image into
-  CoreSimulator's own store, so the download is deleted afterwards. Removal is
+  CoreSimulator's own store, so the download is deleted afterwards. The add also leaves a staged copy
+  in CoreSimulator's cryptex inbox, which would keep the image's full size after the runtime is
+  removed; `simctl runtime scan-and-mount` right after the add clears it. Removal is
   `simctl runtime delete`, which frees the asset behind a runtime only once the last registration
   referencing it is gone and says nothing when it skips that, so the tool waits for the deletion to
   finish and then reports whether the space actually came back.

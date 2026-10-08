@@ -411,8 +411,15 @@ enum SimCtl {
     }
 
     /// Registers a downloaded runtime disk image. CoreSimulator copies the image into its own store.
+    ///
+    /// CoreSimulator first tries the image as a cryptex, staging a copy in its cryptex inbox, and keeps
+    /// that copy when it falls back to a plain disk image. The copy is a clone, free while the runtime
+    /// exists, and holds the image's full size once the runtime is deleted. `scan-and-mount` starts by
+    /// clearing the inbox; it also registers any complete runtime asset it finds unregistered.
     static func add(_ image: URL, using xcode: InstalledXcode) throws {
-        try run(executable, ["runtime", "add", image.path], environment: ["DEVELOPER_DIR": xcode.developerDir.path])
+        let environment = ["DEVELOPER_DIR": xcode.developerDir.path]
+        try run(executable, ["runtime", "add", image.path], environment: environment)
+        _ = try? run(executable, ["runtime", "scan-and-mount"], environment: environment)
     }
 
     /// Deletes a registration and, once it was the last one referencing the asset, its MobileAsset.
