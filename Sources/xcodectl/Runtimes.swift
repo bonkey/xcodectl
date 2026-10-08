@@ -65,9 +65,10 @@ enum RuntimePlatform: String, CaseIterable {
 
 // MARK: - SimulatorRuntime
 
-/// One downloadable runtime from Apple's index. Only the current format: `cryptexDiskImage`
-/// entries delivered as MobileAssets, which is everything from iOS 18, tvOS 18, watchOS 11 and
-/// visionOS 2 onwards. The older directly downloadable images are deliberately not listed.
+/// One downloadable runtime from Apple's index. From iOS 18, tvOS 18, watchOS 11 and visionOS 2 on,
+/// a `cryptexDiskImage` that Apple delivers as a MobileAsset, so only Xcode can install it. Before
+/// that, back to iOS 16, tvOS 16, watchOS 9 and visionOS 1, a `diskImage` at `source`, downloaded
+/// with the Apple session. The installer packages of older versions are not listed.
 struct SimulatorRuntime: Equatable {
     let name: String
     let platform: RuntimePlatform
@@ -77,6 +78,7 @@ struct SimulatorRuntime: Equatable {
     let size: Int64
     let minXcode: String?
     let maxXcode: String?
+    let source: URL?
 
     /// Apple marks prereleases in the name only ("tvOS 27.0 beta 4 Simulator Runtime").
     var isBeta: Bool {
@@ -148,7 +150,7 @@ enum Runtimes {
         return try parse(data)
     }
 
-    /// Current-format entries of the index, newest version first.
+    /// Cryptex and disk-image entries of the index, newest version first.
     static func parse(_ data: Data) throws -> [SimulatorRuntime] {
         let index: Index
         do {
@@ -157,7 +159,8 @@ enum Runtimes {
             throw Fail("cannot read Apple's simulator runtime index: \(error.localizedDescription)")
         }
         let runtimes = index.downloadables.compactMap { entry -> SimulatorRuntime? in
-            guard entry.contentType == "cryptexDiskImage",
+            let source = entry.contentType == "diskImage" ? entry.source.flatMap(URL.init(string:)) : nil
+            guard entry.contentType == "cryptexDiskImage" || source != nil,
                   let platform = entry.platform.flatMap(RuntimePlatform.init(identifier:)),
                   let simulator = entry.simulatorVersion
             else {
@@ -171,7 +174,8 @@ enum Runtimes {
                 architectures: entry.architectures ?? [],
                 size: entry.fileSize ?? 0,
                 minXcode: entry.hostRequirements?.minXcodeVersion,
-                maxXcode: entry.hostRequirements?.maxXcodeVersion)
+                maxXcode: entry.hostRequirements?.maxXcodeVersion,
+                source: source)
         }
         return sorted(forThisMac(runtimes))
     }
@@ -286,7 +290,8 @@ enum Runtimes {
             return Array(components.prefix(wanted.count)) == wanted
         }
         guard !candidates.isEmpty else {
-            throw Fail("no \(platform.display) runtime matching \"\(raw)\"; see `xcodectl runtime list`")
+            throw Fail(
+                "no \(platform.display) runtime matching \"\(raw)\"; see `xcodectl runtime list --platform \(platform.rawValue) --all`")
         }
         return candidates.first { !$0.isBeta } ?? candidates[0]
     }
@@ -311,6 +316,7 @@ extension Runtimes {
             let contentType: String?
             let platform: String?
             let name: String?
+            let source: String?
             let simulatorVersion: SimulatorVersion?
             let architectures: [String]?
             let fileSize: Int64?
@@ -402,6 +408,11 @@ enum SimCtl {
             throw Fail("cannot read `simctl runtime match list -j` output")
         }
         return Set(root.values.compactMap { ($0["chosenRuntimeBuild"] as? String)?.lowercased() })
+    }
+
+    /// Registers a downloaded runtime disk image. CoreSimulator copies the image into its own store.
+    static func add(_ image: URL, using xcode: InstalledXcode) throws {
+        try run(executable, ["runtime", "add", image.path], environment: ["DEVELOPER_DIR": xcode.developerDir.path])
     }
 
     /// Deletes a registration and, once it was the last one referencing the asset, its MobileAsset.

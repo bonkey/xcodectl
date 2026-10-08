@@ -237,7 +237,9 @@ context, for example with `OLLAMA_CONTEXT_LENGTH=32768`.
 
 ## Simulator runtimes
 
-No login needed: Apple serves the runtime catalog and the runtimes themselves publicly.
+No login needed from iOS 18, tvOS 18, watchOS 11 and visionOS 2 on: Apple serves the runtime catalog
+and these runtimes publicly. Older ones, back to iOS 16, tvOS 16, watchOS 9 and visionOS 1, download
+with your Apple session, like an Xcode.
 
 ```
 $ xcodectl runtime list
@@ -258,6 +260,7 @@ Install the runtime matching an Xcode, or an exact one:
 ```
 xcodectl runtime install ios              # the one matching the active Xcode
 xcodectl runtime install tvos 26.0
+xcodectl runtime install ios 17           # the newest iOS 17 release: 17.5
 xcodectl runtime install ios --xcode 27.0 # through that Xcode, without selecting it
 ```
 
@@ -286,8 +289,8 @@ xcodectl runtime prune --dry-run   # what would go, and how much it frees
 xcodectl runtime prune
 ```
 
-Only the current runtime format is supported, which covers iOS 18, tvOS 18, watchOS 11 and
-visionOS 2 and everything newer. Apple Silicon only.
+Runtimes back to iOS 16, tvOS 16, watchOS 9 and visionOS 1 are supported. Apple limits iOS 16,
+tvOS 16 and watchOS 9 to Xcode 26 and older. Apple Silicon only.
 
 ## Install
 
@@ -400,11 +403,14 @@ exits 1 when not. When it has expired, run `auth login` and export again.
   and stay.
 - Simulator runtimes: the catalog is Apple's public
   `https://devimages-cdn.apple.com/downloads/xcode/simulators/index2.dvtdownloadableindex`, read for
-  the current `cryptexDiskImage` entries only and deduplicated to one row per build, preferring the
-  Apple Silicon artifact over the universal one. Apple delivers these as MobileAssets into a
-  SIP-protected store that only Xcode can write, so the download itself is `xcodebuild
+  its `cryptexDiskImage` and `diskImage` entries and deduplicated to one row per build, preferring the
+  Apple Silicon artifact over the universal one. Apple delivers cryptexes as MobileAssets into a
+  SIP-protected store that only Xcode can write, so their download is `xcodebuild
   -downloadPlatform`, pointed at a chosen Xcode through `DEVELOPER_DIR` so it needs neither
-  `xcode-select` nor sudo; without a version, Xcode picks the runtime matching itself. Removal is
+  `xcode-select` nor sudo; without a version, Xcode picks the runtime matching itself. A disk image
+  is a `.dmg` on `download.developer.apple.com` behind the same ticket as an Xcode; it downloads like
+  one into `~/.xcodectl/cache/` and `simctl runtime add` registers it, copying the image into
+  CoreSimulator's own store, so the download is deleted afterwards. Removal is
   `simctl runtime delete`, which frees the asset behind a runtime only once the last registration
   referencing it is gone and says nothing when it skips that, so the tool waits for the deletion to
   finish and then reports whether the space actually came back.

@@ -10,7 +10,9 @@ import XCTest
 final class RuntimesTests: XCTestCase {
     // MARK: - Index parsing
 
-    func testParseKeepsOnlyTheCurrentCryptexFormat() throws {
+    /// Disk images (iOS 16 and 17) download from their own URL; installer packages (iOS 15 and
+    /// older) are not read.
+    func testParseKeepsCryptexesAndDiskImagesButNotPackages() throws {
         let runtimes = try Runtimes.parse(makeIndex([
             makeEntry(platform: "com.apple.platform.iphoneos", version: "26.5", build: "23F77"),
             makeEntry(
@@ -20,7 +22,21 @@ final class RuntimesTests: XCTestCase {
                 contentType: "diskImage"),
             makeEntry(platform: "com.apple.platform.iphoneos", version: "12.4", build: "16G73", contentType: "package"),
         ]))
-        XCTAssertEqual(runtimes.map(\.build), ["23F77"])
+        XCTAssertEqual(runtimes.map(\.build), ["23F77", "21F79"])
+        XCTAssertNil(runtimes[0].source)
+        XCTAssertEqual(
+            runtimes[1].source?.absoluteString,
+            "https://download.developer.apple.com/Developer_Tools/21F79/21F79.dmg")
+    }
+
+    func testParseSkipsADiskImageWithoutASource() throws {
+        var entry = makeEntry(
+            platform: "com.apple.platform.iphoneos",
+            version: "17.5",
+            build: "21F79",
+            contentType: "diskImage")
+        entry["source"] = nil
+        XCTAssertTrue(try Runtimes.parse(makeIndex([entry])).isEmpty)
     }
 
     func testParseReadsEveryPlatform() throws {
@@ -153,6 +169,30 @@ final class RuntimesTests: XCTestCase {
         XCTAssertEqual(try Runtimes.resolve("27", platform: .ios, in: runtimes).build, "24A1")
     }
 
+    func testResolveTakesTheNewestReleaseOfAnOlderMajor() throws {
+        let runtimes = try Runtimes.parse(makeIndex([
+            makeEntry(platform: "com.apple.platform.iphoneos", version: "18.0", build: "22A3351"),
+            makeEntry(
+                platform: "com.apple.platform.iphoneos",
+                version: "17.5",
+                build: "21F5058d",
+                name: "iOS 17.5 beta 2 Simulator Runtime",
+                contentType: "diskImage"),
+            makeEntry(
+                platform: "com.apple.platform.iphoneos",
+                version: "17.5",
+                build: "21F79",
+                contentType: "diskImage"),
+            makeEntry(
+                platform: "com.apple.platform.iphoneos",
+                version: "17.4",
+                build: "21E213",
+                contentType: "diskImage"),
+        ]))
+        XCTAssertEqual(try Runtimes.resolve("17", platform: .ios, in: runtimes).build, "21F79")
+        XCTAssertEqual(try Runtimes.resolve("17.4", platform: .ios, in: runtimes).build, "21E213")
+    }
+
     func testResolveStaysWithinItsPlatform() throws {
         let runtimes = try makeCatalog()
         XCTAssertThrowsError(try Runtimes.resolve("24A1", platform: .tvos, in: runtimes))
@@ -160,7 +200,9 @@ final class RuntimesTests: XCTestCase {
 
     func testResolveRejectsAnUnknownVersion() throws {
         let runtimes = try makeCatalog()
-        XCTAssertThrowsError(try Runtimes.resolve("99.0", platform: .ios, in: runtimes))
+        XCTAssertThrowsError(try Runtimes.resolve("99.0", platform: .ios, in: runtimes)) { error in
+            XCTAssertTrue("\(error)".contains("`xcodectl runtime list --platform ios --all`"), "\(error)")
+        }
     }
 
     // MARK: - Host requirements

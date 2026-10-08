@@ -1027,6 +1027,51 @@ func downloadRuntime(
     }
 }
 
+/// A disk-image runtime downloads with the Apple session, like an Xcode, and simctl registers it.
+/// CoreSimulator keeps its own copy, so the download goes once it is registered.
+func installDiskImageRuntime(
+    _ runtime: SimulatorRuntime,
+    from source: URL,
+    autologin: Bool,
+    using xcode: InstalledXcode)
+    async throws
+{
+    let label = "\(runtime.display) (\(runtime.build))"
+    let registered = (try? SimCtl.runtimes()) ?? []
+    guard !registered.contains(where: { $0.isReady && $0.build.lowercased() == runtime.build.lowercased() }) else {
+        ui.info(InfoAlert(stringLiteral: "\(label) is already installed"))
+        return
+    }
+    try Paths.ensureCache()
+    let image = Paths.cache.appendingPathComponent(source.lastPathComponent)
+    if !FileManager.default.fileExists(atPath: image.path) {
+        let cookies = try await Session.ensureTicket(signIn: Login.autologin(autologin))
+        let connections = Int(ProcessInfo.processInfo.environment["XCODECTL_CONNECTIONS"] ?? "") ?? Downloader
+            .defaultConnections
+        let downloader = Downloader(
+            url: source,
+            cookieHeader: Session.header(cookies, host: source.host!),
+            destination: image,
+            connections: connections)
+        try await ui.progressBarStep(
+            message: "Downloading \(label)",
+            successMessage: "Downloaded \(label)",
+            errorMessage: "Download failed")
+        { update in
+            try await downloader.run(progress: update)
+        }
+    }
+    try await ui.progressStep(
+        message: "Adding \(label)",
+        successMessage: "Installed \(label)",
+        errorMessage: "Installing \(label) failed",
+        showSpinner: true)
+    { _ in
+        try SimCtl.add(image, using: xcode)
+    }
+    try? FileManager.default.removeItem(at: image)
+}
+
 /// Deletes registrations and reports whether the disk space actually came back. CoreSimulator frees
 /// the MobileAsset behind a runtime only once the last registration referencing it is gone, and it
 /// says nothing when it skips that, so check.
@@ -1060,9 +1105,9 @@ struct RuntimeCommand: AsyncParsableCommand {
         commandName: "runtime",
         abstract: "List, install and remove simulator runtimes.",
         discussion: """
-        Runtimes need no Apple ID: Apple serves the index and the runtimes themselves publicly. \
-        Only the current format is supported, which covers iOS 18, tvOS 18, watchOS 11 and visionOS 2 \
-        and everything newer.
+        Runtimes from iOS 18, tvOS 18, watchOS 11 and visionOS 2 on need no Apple ID: Apple serves \
+        them publicly and the Xcode used installs them. Older ones, back to iOS 16, tvOS 16, watchOS 9 \
+        and visionOS 1, are disk images that download with the Apple session (`xcodectl auth login`).
         """,
         subcommands: [
             RuntimeList.self,
@@ -1162,6 +1207,14 @@ struct RuntimeInstall: AsyncParsableCommand {
         completion: .custom(completeInstalledVersion))
     var xcode: String?
 
+    @Flag(
+        inversion: .prefixedNo,
+        help: """
+        Open the sign-in window when a runtime older than iOS 18 needs the Apple session and it is \
+        missing or expired (only at a terminal).
+        """)
+    var autologin = true
+
     func run() async throws {
         let host = try await runtimeHost(xcode)
         guard let version else {
@@ -1172,6 +1225,10 @@ struct RuntimeInstall: AsyncParsableCommand {
         guard runtime.runs(onXcode: host.version) else {
             throw Fail("\(runtime.display) (\(runtime.build)) needs a different Xcode than \(host.name) "
                 + "(\(host.version)); see `xcodectl runtime list --all`")
+        }
+        if let source = runtime.source {
+            try await installDiskImageRuntime(runtime, from: source, autologin: autologin, using: host)
+            return
         }
         try await downloadRuntime(
             platform,

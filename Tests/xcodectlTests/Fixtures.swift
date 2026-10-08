@@ -55,6 +55,8 @@ func makeEntry(
     ]
     if contentType == "cryptexDiskImage" {
         entry["downloadMethod"] = "mobileAsset"
+    } else {
+        entry["source"] = "https://download.developer.apple.com/Developer_Tools/\(build)/\(build).dmg"
     }
     var requirements: [String: Any] = [:]
     if let minXcode {
