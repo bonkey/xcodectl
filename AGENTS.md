@@ -22,9 +22,9 @@ only places that call `sudo`, apart from two fallbacks for a Mac that keeps its 
 and `remove` deletes with `sudo rm`.
 Simulator runtimes: the catalog is Apple's public `index2.dvtdownloadableindex`. The
 `cryptexDiskImage` format (iOS 18, tvOS 18, watchOS 11, visionOS 2 and newer) needs no Apple account:
-`runtime install` (or `install --runtimes ios,watchos|all`) hands the download to that Xcode's
+`install <platform>` (or `install --runtimes ios,watchos|all`) hands the download to that Xcode's
 `xcodebuild`. The older `diskImage` format (back to iOS 16, tvOS 16, watchOS 9, visionOS 1) is a `.dmg`
-behind the same `ADCDownloadAuth` ticket as an Xcode download; `runtime install` fetches it with the
+behind the same `ADCDownloadAuth` ticket as an Xcode download; `install <platform>` fetches it with the
 downloader and registers it with `simctl runtime add`. Installer packages (iOS 15 and older) are not read.
 Security keys: WebKit refuses WebAuthn for apple.com in third-party apps, so a user script
 routes `navigator.credentials.get` to LibFido2Swift (libfido2 over USB) and returns the
@@ -58,12 +58,12 @@ Sources/xcodectl/
   expansion is libunxip.
 - Cryptex simulator runtimes are the one thing this tool does not download itself. Apple delivers them
   as MobileAssets into a SIP-protected store that only `xcodebuild -downloadPlatform` can write,
-  so `runtime install` drives that, aimed at a chosen Xcode with `DEVELOPER_DIR` so it needs neither
+  so `install <platform>` drives that, aimed at a chosen Xcode with `DEVELOPER_DIR` so it needs neither
   `xcode-select` nor sudo. Disk-image runtimes are a plain download; `simctl runtime add` copies the
   image into CoreSimulator's store without sudo, so the download goes afterwards. Xcode 27's xcodebuild
   does not offer them. Tools whose output is parsed run in the C locale (`runTool`), because
   xcodebuild otherwise prints progress as "3,56 GB".
-- The runtimes an Xcode uses (`list-installed`, `remove`) are the ready registrations whose build is a
+- The runtimes an Xcode uses (`installed`, `remove`) are the ready registrations whose build is a
   `chosenRuntimeBuild` of `simctl runtime match list -j` run under that Xcode's `DEVELOPER_DIR`. Not the
   SDK builds in `data.json`: CoreSimulator often picks a newer runtime build than the SDK's own.
   `remove` keeps runtimes another installed Xcode uses, and deletes runtimes before the Xcode,

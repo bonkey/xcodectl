@@ -211,7 +211,7 @@ enum Runtimes {
         }
     }
 
-    /// Default `runtime list` set: the newest major of each platform. `.current` keeps its releases
+    /// Default `list <platform>` set: the newest major of each platform. `.current` keeps its releases
     /// plus any beta newer than the newest release, so a running beta cycle shows and stale ones do not.
     static func defaultListing(
         _ runtimes: [SimulatorRuntime],
@@ -290,8 +290,8 @@ enum Runtimes {
             return Array(components.prefix(wanted.count)) == wanted
         }
         guard !candidates.isEmpty else {
-            throw Fail(
-                "no \(platform.display) runtime matching \"\(raw)\"; see `xcodectl runtime list --platform \(platform.rawValue) --all`")
+            throw Fail("no \(platform.display) runtime matching \"\(raw)\"; "
+                + "see `xcodectl list \(platform.rawValue) --all`")
         }
         return candidates.first { !$0.isBeta } ?? candidates[0]
     }

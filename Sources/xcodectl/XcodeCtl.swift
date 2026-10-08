@@ -11,7 +11,7 @@ import Noora
 struct XcodeCtl: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "xcodectl",
-        abstract: "Install, approve, switch and remove Xcode versions.",
+        abstract: "Install, approve, switch and remove Xcode versions and their simulator runtimes.",
         version: version,
         subcommands: [
             AuthCommand.self,
@@ -24,7 +24,7 @@ struct XcodeCtl: AsyncParsableCommand {
             Approve.self,
             Select.self,
             Remove.self,
-            RuntimeCommand.self,
+            Prune.self,
             DownloadURL.self,
         ])
 }
@@ -66,6 +66,11 @@ func resolveOrPick(_ version: String?, _ question: String) async throws -> Insta
 func completeInstalledVersion(_: [String], _: Int, _: String) -> [String] {
     var seen = Set<String>()
     return Installed.all().map(\.version).filter { seen.insert($0).inserted }
+}
+
+/// Shell completion for the first argument of `remove`: installed Xcode versions, then the runtime words.
+func completeRemoveTarget(_ arguments: [String], _ index: Int, _ prefix: String) -> [String] {
+    completeInstalledVersion(arguments, index, prefix) + RuntimeTarget.allValueStrings
 }
 
 /// A release from a version query, or from a latest / latest beta picker when none is given.
@@ -273,14 +278,21 @@ struct AuthCommand: AsyncParsableCommand {
 struct List: AsyncParsableCommand {
     static let configuration =
         CommandConfiguration(
-            abstract: "Available Xcode versions (the two latest majors; regex searches everything).",
+            abstract: "Available Xcode versions (two latest majors; a regex searches all), or simulator runtimes.",
             discussion: """
             Without a regex: finals of the two latest majors, plus any prerelease newer than the newest \
             final. --stable keeps finals only, --beta keeps prereleases only. A regex searches every \
-            release; --stable / --beta narrow the matches.
+            release; --stable / --beta narrow the matches. A platform (ios, tvos, watchos, visionos) or \
+            `runtimes` lists the simulator runtimes Apple offers for this Mac instead: the newest major of \
+            each platform, every version with --all. Runtimes from iOS 18, tvOS 18, watchOS 11 and visionOS 2 \
+            on need no Apple ID: Apple serves them publicly and the Xcode used installs them. Older ones, back \
+            to iOS 16, tvOS 16, watchOS 9 and visionOS 1, are disk images that download with the Apple session.
             """)
 
-    @Argument(help: "Regex matched against version and build, e.g. '26\\.[45]' or '27.*beta'.")
+    @Argument(help: """
+    Regex matched against version and build, e.g. '26\\.[45]' or '27.*beta'. Or ios, tvos, watchos, \
+    visionos or runtimes.
+    """)
     var pattern: String?
 
     @Flag(help: "Only final releases.")
@@ -289,13 +301,23 @@ struct List: AsyncParsableCommand {
     @Flag(help: "Only betas, rcs and other prereleases.")
     var beta = false
 
+    @Flag(help: "Runtimes only: every version, not just the newest major of each platform.")
+    var all = false
+
     func validate() throws {
         guard !(stable && beta) else {
             throw Fail("--stable and --beta exclude each other")
         }
+        guard !all || runtimes != nil else {
+            throw Fail("--all applies to runtimes, e.g. `xcodectl list ios --all`; a regex searches every Xcode")
+        }
     }
 
     func run() async throws {
+        if let runtimes {
+            try await listRuntimes(runtimes.platform)
+            return
+        }
         async let requirements = SystemRequirements.fetch()
         let all = try await Releases.fetch()
         let shown: [Release] =
@@ -310,24 +332,57 @@ struct List: AsyncParsableCommand {
         let marks = await Compatibility.column(shown, requirements: requirements)
         printTable(zip(releaseRows(shown), marks).map { $0 + [$1] })
     }
+
+    private var runtimes: RuntimeTarget? {
+        pattern.flatMap(RuntimeTarget.init(argument:))
+    }
+
+    private func listRuntimes(_ platform: RuntimePlatform?) async throws {
+        let catalog = try await Runtimes.fetch()
+        let installed = (try? SimCtl.runtimes()) ?? []
+        let kind: Runtimes.Filter = stable ? .stable : beta ? .beta : all ? .all : .current
+        let shown = all
+            ? Runtimes.filter(catalog.filter { platform == nil || $0.platform == platform }, kind)
+            : Runtimes.defaultListing(catalog, platform: platform, kind)
+        guard !shown.isEmpty else {
+            throw Fail("no runtimes match")
+        }
+        printTable(runtimeRows(shown, installed: installed))
+    }
 }
 
 // MARK: - ListInstalled
 
 struct ListInstalled: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
-        commandName: "list-installed",
-        abstract: "Xcode versions in /Applications with their size and the simulator runtimes they use.",
+        commandName: "installed",
+        abstract: "Xcode versions in /Applications with size and the simulator runtimes they use, or the runtimes.",
         discussion: """
         A runtime shows under every Xcode that uses it. When simctl cannot tell, the runtimes are left out. \
         Sizing an Xcode reads every file in it, so at a terminal the table shows at once and the sizes \
-        fill in; elsewhere it prints once they are known.
+        fill in; elsewhere it prints once they are known. A platform (ios, tvos, watchos, visionos) or \
+        `runtimes` lists every simulator runtime registration instead. `simctl runtime list` shows usable \
+        images only, so an interrupted download or a broken image stays invisible there while still \
+        holding several gigabytes.
         """)
+
+    @Argument(help: "ios, tvos, watchos, visionos or runtimes for the simulator runtimes. Omit for Xcode.")
+    var runtimes: RuntimeTarget?
 
     @Flag(help: "Skip sizing each Xcode, which reads every file in its bundle.")
     var noSize = false
 
+    func validate() throws {
+        if runtimes != nil {
+            try rejectXcodeOnly(["--no-size": noSize])
+        }
+    }
+
     func run() async throws {
+        if let runtimes {
+            try listRuntimes(runtimes.platform)
+            return
+        }
         let installed = Installed.all()
         guard !installed.isEmpty else {
             throw Fail("no Xcode installed in /Applications")
@@ -369,6 +424,25 @@ struct ListInstalled: AsyncParsableCommand {
         if live == nil {
             printTable(installedRows(entries, active: active))
         }
+    }
+
+    private func listRuntimes(_ platform: RuntimePlatform?) throws {
+        let installed = try SimCtl.runtimes().filter { platform == nil || $0.platform == platform }
+        guard !installed.isEmpty else {
+            throw Fail("no \(platform?.display ?? "simulator") runtime installed")
+        }
+        var rows = [["PLATFORM", "VERSION", "BUILD", "SIZE", "STATE", "IDENTIFIER"]]
+        for runtime in installed {
+            rows.append([
+                runtime.platform?.display ?? "?",
+                runtime.version,
+                runtime.build,
+                formatBytes(runtime.size),
+                runtime.isReady ? "" : runtime.state,
+                runtime.identifier,
+            ])
+        }
+        printTable(rows)
     }
 }
 
@@ -512,11 +586,17 @@ struct ReleaseNotesCommand: AsyncParsableCommand {
 
 struct Install: AsyncParsableCommand {
     static let configuration =
-        CommandConfiguration(abstract: "Download and install an Xcode version into /Applications.")
+        CommandConfiguration(
+            abstract: "Download and install an Xcode version into /Applications, or a simulator runtime.",
+            discussion: """
+            A platform first (ios, tvos, watchos, visionos) installs that simulator runtime instead, through \
+            the active Xcode or the one --xcode names: the version or build given after the platform, else \
+            the one matching that Xcode. A runtime older than iOS 18 downloads with the Apple session.
+            """)
 
     @Argument(help: """
     26.1, 27, 27-rc1, '27 beta 3', 27A266a, latest, latest-beta. Several install in parallel. \
-    Omit for a picker.
+    Omit for a picker. Or a platform and optionally a runtime version or build, e.g. 'ios 26.0'.
     """)
     var versions: [String] = []
 
@@ -531,7 +611,10 @@ struct Install: AsyncParsableCommand {
 
     @Flag(
         inversion: .prefixedNo,
-        help: "Open the sign-in window when the Apple session is missing or expired (only at a terminal).")
+        help: """
+        Open the sign-in window when the Apple session is missing or expired (only at a terminal). \
+        A runtime needs it only when older than iOS 18.
+        """)
     var autologin = true
 
     @Option(
@@ -539,7 +622,31 @@ struct Install: AsyncParsableCommand {
         help: "Also install simulator runtimes matching this Xcode: 'all' or a list like 'ios,watchos'.")
     var runtimeSelection: RuntimeSelection?
 
+    @Option(
+        help: "Runtimes only: install through this Xcode instead of the active one.",
+        completion: .custom(completeInstalledVersion))
+    var xcode: String?
+
     func validate() throws {
+        if let runtime = versions.first.flatMap(RuntimeTarget.init(argument:)) {
+            guard runtime.platform != nil else {
+                throw Fail(
+                    "name one platform: ios, tvos, watchos or visionos (`install <xcode> --runtimes all` takes all)")
+            }
+            guard versions.count <= 2 else {
+                throw Fail("a runtime takes one version after the platform, e.g. `xcodectl install ios 26.0`")
+            }
+            try rejectXcodeOnly([
+                "--select": select,
+                "--no-approve": noApprove,
+                "--no-clt": noClt,
+                "--runtimes": runtimeSelection != nil,
+            ])
+            return
+        }
+        guard xcode == nil else {
+            throw Fail("--xcode applies to runtimes, e.g. `xcodectl install ios --xcode 27.0`")
+        }
         // Runtimes install through this Xcode's own xcodebuild, which an unapproved Xcode refuses to run.
         guard runtimeSelection == nil || !noApprove else {
             throw Fail("--runtimes needs an approved Xcode; drop --no-approve")
@@ -550,6 +657,10 @@ struct Install: AsyncParsableCommand {
     }
 
     func run() async throws {
+        if let platform = versions.first.flatMap(RuntimeTarget.init(argument:))?.platform {
+            try await installRuntime(platform, version: versions.dropFirst().first)
+            return
+        }
         var releases: [Release] = []
         if versions.isEmpty {
             releases = try await [resolveOrPickRelease(nil, "Which Xcode?")]
@@ -602,6 +713,29 @@ struct Install: AsyncParsableCommand {
             let version = releases.count == 1 ? releases[0].display : "<version>"
             ui.info(InfoAlert(stringLiteral: "next: `xcodectl select \(version)` to make it the active Xcode"))
         }
+    }
+
+    private func installRuntime(_ platform: RuntimePlatform, version: String?) async throws {
+        let host = try await runtimeHost(xcode)
+        guard let version else {
+            try await downloadRuntime(platform, label: "\(platform.display) runtime", using: host)
+            return
+        }
+        let runtime = try await Runtimes.resolve(version, platform: platform, in: Runtimes.fetch())
+        guard runtime.runs(onXcode: host.version) else {
+            throw Fail("\(runtime.display) (\(runtime.build)) needs a different Xcode than \(host.name) "
+                + "(\(host.version)); see `xcodectl list \(platform.rawValue) --all`")
+        }
+        if let source = runtime.source {
+            try await installDiskImageRuntime(runtime, from: source, autologin: autologin, using: host)
+            return
+        }
+        try await downloadRuntime(
+            platform,
+            build: runtime.build,
+            appleSiliconOnly: runtime.isAppleSiliconOnly,
+            label: "\(runtime.display) (\(runtime.build))",
+            using: host)
     }
 
     /// Downloads all releases at once, then expands them all at once. Keyed by build.
@@ -816,16 +950,43 @@ struct Select: AsyncParsableCommand {
 
 struct Remove: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
-        abstract: "Delete an installed Xcode from /Applications, with the simulator runtimes only it uses.",
-        discussion: "Runtimes another installed Xcode also uses stay.")
+        abstract: "Delete an installed Xcode with the simulator runtimes only it uses, or a simulator runtime.",
+        discussion: """
+        Runtimes another installed Xcode also uses stay. A platform first (ios, tvos, watchos, visionos, or \
+        runtimes for any) deletes an installed simulator runtime instead: the version or build given after \
+        the platform, else one picked from a list.
+        """)
 
-    @Argument(help: "Installed version.", completion: .custom(completeInstalledVersion))
+    @Argument(
+        help: "Installed version. Or ios, tvos, watchos, visionos or runtimes.",
+        completion: .custom(completeRemoveTarget))
     var version: String
+
+    @Argument(help: "Runtime version or build, after a platform. Omit for a picker.")
+    var runtimeVersion: String?
 
     @Flag(help: "Keep the simulator runtimes this Xcode uses.")
     var keepRuntimes = false
 
+    func validate() throws {
+        guard let runtime = RuntimeTarget(argument: version) else {
+            guard runtimeVersion == nil else {
+                throw Fail(
+                    "one Xcode at a time; a second version only follows a platform, e.g. `xcodectl remove ios 26.0`")
+            }
+            return
+        }
+        if let runtimeVersion, runtime.platform == nil {
+            throw Fail("name the platform of runtime \(runtimeVersion), e.g. `xcodectl remove ios \(runtimeVersion)`")
+        }
+        try rejectXcodeOnly(["--keep-runtimes": keepRuntimes])
+    }
+
     func run() async throws {
+        if let runtime = RuntimeTarget(argument: version) {
+            try await removeRuntime(runtime.platform)
+            return
+        }
         let path = try await target()
         let name = path.lastPathComponent
         let wasActive = Installed.isActive(path)
@@ -850,6 +1011,21 @@ struct Remove: AsyncParsableCommand {
         let next = isInteractive ? try pickInstalled("That was the active Xcode. Select which one now?") : remaining[0]
         try Installer.select(next)
         ui.success(SuccessAlert(stringLiteral: "Active: \(next.path.path)"))
+    }
+
+    private func removeRuntime(_ platform: RuntimePlatform?) async throws {
+        let installed = try SimCtl.runtimes()
+        let candidates = installed.filter { platform == nil || $0.platform == platform }
+        guard let runtimeVersion else {
+            try await removeRuntimes([pickInstalledRuntime("Remove which runtime?", from: candidates)])
+            return
+        }
+        let text = runtimeVersion.lowercased()
+        let hits = candidates.filter { $0.version.lowercased() == text || $0.build.lowercased() == text }
+        guard !hits.isEmpty else {
+            throw Fail("no installed runtime matching \"\(runtimeVersion)\"; see `xcodectl installed runtimes`")
+        }
+        try await removeRuntimes(hits)
     }
 
     /// Runtimes go before the Xcode: only the Xcode can say which runtimes it uses, and simctl comes
@@ -942,6 +1118,38 @@ struct RuntimeSelection: ExpressibleByArgument, Equatable {
     let platforms: [RuntimePlatform]
     /// `all` becomes one `-downloadAllPlatforms` run rather than one run per platform.
     let isAll: Bool
+}
+
+// MARK: - RuntimeTarget
+
+/// The first argument of `list`, `installed`, `install` or `remove` when it names simulator runtimes
+/// rather than an Xcode: a platform, or `runtimes` for every platform. No Xcode version query takes
+/// these forms.
+struct RuntimeTarget: ExpressibleByArgument, Equatable {
+    init?(argument: String) {
+        if argument.lowercased() == "runtimes" {
+            platform = nil
+            return
+        }
+        guard let platform = RuntimePlatform(argument: argument) else {
+            return nil
+        }
+        self.platform = platform
+    }
+
+    static var allValueStrings: [String] {
+        RuntimePlatform.allValueStrings + ["runtimes"]
+    }
+
+    /// `nil` for every platform.
+    let platform: RuntimePlatform?
+}
+
+/// Fails on the first given option that applies only to Xcode, for a command aimed at runtimes.
+func rejectXcodeOnly(_ options: KeyValuePairs<String, Bool>) throws {
+    if let given = options.first(where: \.value) {
+        throw Fail("\(given.key) applies to Xcode, not runtimes")
+    }
 }
 
 // MARK: - Runtime helpers
@@ -1094,186 +1302,15 @@ func removeRuntimes(_ runtimes: [InstalledRuntime]) async throws {
             continue
         }
         ui.warning(WarningAlert(stringLiteral: "\(formatBytes(runtime.size)) stays on disk: another runtime "
-                + "registration still references this asset. `xcodectl runtime list-installed` shows them all."))
+                + "registration still references this asset. `xcodectl installed runtimes` shows them all."))
     }
 }
 
-// MARK: - RuntimeCommand
+// MARK: - Prune
 
-struct RuntimeCommand: AsyncParsableCommand {
+struct Prune: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
-        commandName: "runtime",
-        abstract: "List, install and remove simulator runtimes.",
-        discussion: """
-        Runtimes from iOS 18, tvOS 18, watchOS 11 and visionOS 2 on need no Apple ID: Apple serves \
-        them publicly and the Xcode used installs them. Older ones, back to iOS 16, tvOS 16, watchOS 9 \
-        and visionOS 1, are disk images that download with the Apple session (`xcodectl auth login`).
-        """,
-        subcommands: [
-            RuntimeList.self,
-            RuntimeListInstalled.self,
-            RuntimeInstall.self,
-            RuntimeRemove.self,
-            RuntimePrune.self,
-        ],
-        defaultSubcommand: RuntimeList.self)
-}
-
-// MARK: - RuntimeList
-
-struct RuntimeList: AsyncParsableCommand {
-    static let configuration = CommandConfiguration(
-        commandName: "list",
-        abstract: "Simulator runtimes Apple offers for this Mac.")
-
-    @Option(help: "ios, tvos, watchos or visionos. Omit for every platform.")
-    var platform: RuntimePlatform?
-
-    @Flag(help: "Only released runtimes.")
-    var stable = false
-
-    @Flag(help: "Only betas.")
-    var beta = false
-
-    @Flag(help: "Every version, not just the newest major of each platform.")
-    var all = false
-
-    func validate() throws {
-        guard !(stable && beta) else {
-            throw Fail("--stable and --beta exclude each other")
-        }
-    }
-
-    func run() async throws {
-        let catalog = try await Runtimes.fetch()
-        let installed = (try? SimCtl.runtimes()) ?? []
-        let kind: Runtimes.Filter = stable ? .stable : beta ? .beta : all ? .all : .current
-        let shown = all
-            ? Runtimes.filter(catalog.filter { platform == nil || $0.platform == platform }, kind)
-            : Runtimes.defaultListing(catalog, platform: platform, kind)
-        guard !shown.isEmpty else {
-            throw Fail("no runtimes match")
-        }
-        printTable(runtimeRows(shown, installed: installed))
-    }
-}
-
-// MARK: - RuntimeListInstalled
-
-struct RuntimeListInstalled: AsyncParsableCommand {
-    static let configuration = CommandConfiguration(
-        commandName: "list-installed",
-        abstract: "Simulator runtimes on this Mac, including leftovers simctl hides.",
-        discussion: """
-        `simctl runtime list` shows usable images only, so an interrupted download or a broken image \
-        stays invisible while still holding several gigabytes. Everything registered is listed here.
-        """)
-
-    func run() async throws {
-        let installed = try SimCtl.runtimes()
-        guard !installed.isEmpty else {
-            throw Fail("no simulator runtime installed")
-        }
-        var rows = [["PLATFORM", "VERSION", "BUILD", "SIZE", "STATE", "IDENTIFIER"]]
-        for runtime in installed {
-            rows.append([
-                runtime.platform?.display ?? "?",
-                runtime.version,
-                runtime.build,
-                formatBytes(runtime.size),
-                runtime.isReady ? "" : runtime.state,
-                runtime.identifier,
-            ])
-        }
-        printTable(rows)
-    }
-}
-
-// MARK: - RuntimeInstall
-
-struct RuntimeInstall: AsyncParsableCommand {
-    static let configuration = CommandConfiguration(
-        commandName: "install",
-        abstract: "Download and install a simulator runtime.")
-
-    @Argument(help: "ios, tvos, watchos or visionos.")
-    var platform: RuntimePlatform
-
-    @Argument(help: "Runtime version or build. Omit to take the one matching the Xcode used.")
-    var version: String?
-
-    @Option(
-        help: "Install through this Xcode instead of the active one.",
-        completion: .custom(completeInstalledVersion))
-    var xcode: String?
-
-    @Flag(
-        inversion: .prefixedNo,
-        help: """
-        Open the sign-in window when a runtime older than iOS 18 needs the Apple session and it is \
-        missing or expired (only at a terminal).
-        """)
-    var autologin = true
-
-    func run() async throws {
-        let host = try await runtimeHost(xcode)
-        guard let version else {
-            try await downloadRuntime(platform, label: "\(platform.display) runtime", using: host)
-            return
-        }
-        let runtime = try await Runtimes.resolve(version, platform: platform, in: Runtimes.fetch())
-        guard runtime.runs(onXcode: host.version) else {
-            throw Fail("\(runtime.display) (\(runtime.build)) needs a different Xcode than \(host.name) "
-                + "(\(host.version)); see `xcodectl runtime list --all`")
-        }
-        if let source = runtime.source {
-            try await installDiskImageRuntime(runtime, from: source, autologin: autologin, using: host)
-            return
-        }
-        try await downloadRuntime(
-            platform,
-            build: runtime.build,
-            appleSiliconOnly: runtime.isAppleSiliconOnly,
-            label: "\(runtime.display) (\(runtime.build))",
-            using: host)
-    }
-}
-
-// MARK: - RuntimeRemove
-
-struct RuntimeRemove: AsyncParsableCommand {
-    static let configuration = CommandConfiguration(
-        commandName: "remove",
-        abstract: "Delete an installed simulator runtime and free its disk space.")
-
-    @Argument(help: "ios, tvos, watchos or visionos. Omit for a picker.")
-    var platform: RuntimePlatform?
-
-    @Argument(help: "Runtime version or build. Omit for a picker.")
-    var version: String?
-
-    func run() async throws {
-        let installed = try SimCtl.runtimes()
-        let candidates = installed.filter { platform == nil || $0.platform == platform }
-        guard let version else {
-            try await removeRuntimes([pickInstalledRuntime("Remove which runtime?", from: candidates)])
-            return
-        }
-        let text = version.lowercased()
-        let hits = candidates.filter { $0.version.lowercased() == text || $0.build.lowercased() == text }
-        guard !hits.isEmpty else {
-            throw Fail("no installed runtime matching \"\(version)\"; see `xcodectl runtime list-installed`")
-        }
-        try await removeRuntimes(hits)
-    }
-}
-
-// MARK: - RuntimePrune
-
-struct RuntimePrune: AsyncParsableCommand {
-    static let configuration = CommandConfiguration(
-        commandName: "prune",
-        abstract: "Delete runtime registrations that are no longer usable but still take disk space.")
+        abstract: "Delete simulator runtime registrations that are no longer usable but still take disk space.")
 
     @Flag(help: "List what would go without deleting anything.")
     var dryRun = false

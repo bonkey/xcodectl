@@ -1,16 +1,15 @@
 # xcodectl
 
-Install, approve, switch and remove Xcode versions from the terminal. Works on your Mac and on
-self-hosted CI Macs. No Apple login code inside: you sign in once in a window, the tool keeps the
-session in your Keychain and does the rest.
+Install, approve, switch and remove Xcode versions and their simulator runtimes from the terminal.
+Works on your Mac and on self-hosted CI Macs. No Apple login code inside: you sign in once in a
+window, the tool keeps the session in your Keychain and does the rest.
 
 ```
 xcodectl auth login                sign in to Apple Developer (once)
 xcodectl auth status               whether Apple still accepts the session; exits 1 when not
 xcodectl list [<regex>]            two latest majors + running betas, and whether each runs on this Mac;
                                    --stable/--beta; regex searches all
-xcodectl list-installed [--no-size]
-                                   what is in /Applications with its size and the runtimes each Xcode uses
+xcodectl installed [--no-size]     what is in /Applications with its size and the runtimes each Xcode uses
 xcodectl release-notes [<ver>] [<ver2>] [--markdown | --plain] [--abridged] [--ask "<question>"]
                                    notes rendered in the terminal; two versions: what changed; no login needed
 xcodectl install [<ver>...] [--select] [--no-approve] [--no-clt] [--no-autologin]
@@ -24,17 +23,19 @@ xcodectl approve [<ver>]           license + first launch + developer mode (sudo
 xcodectl select [<ver>]            xcode-select (sudo)
 xcodectl remove <ver> [--keep-runtimes]
                                    also deletes the simulator runtimes no other installed Xcode uses
-xcodectl runtime list              simulator runtimes Apple offers; --platform, --stable/--beta, --all
-xcodectl runtime list-installed    what is installed, including leftovers simctl hides
-xcodectl runtime install <platform> [<ver>]
-xcodectl runtime remove [<platform>] [<ver>]
-xcodectl runtime prune [--dry-run] leftover registrations that still hold disk space
+xcodectl list <platform>|runtimes  simulator runtimes Apple offers; --stable/--beta, --all
+xcodectl installed <platform>|runtimes
+                                   runtimes installed, including leftovers simctl hides
+xcodectl install <platform> [<ver>] [--xcode <ver>]
+xcodectl remove <platform>|runtimes [<ver>]
+xcodectl prune [--dry-run]         leftover runtime registrations that still hold disk space
 xcodectl auth export | import      move the session to a runner
 xcodectl auth logout               delete the session from this Mac's Keychain
 ```
 
 `<ver>` is forgiving: `26.1`, `27`, `27 rc`, `27-rc1`, `27 beta 3`, `27A266a`, `latest`,
-`latest-beta`. Omit it on `install`, `approve`, `select` for a picker.
+`latest-beta`. Omit it on `install`, `approve`, `select` for a picker. `<platform>` is `ios`, `tvos`,
+`watchos` or `visionos`, and `runtimes` means every platform.
 
 ## List
 
@@ -57,7 +58,7 @@ and `✗` when it is too old or too new; here the Mac runs macOS 27.0. `--stable
 the list, a regex searches all versions: `xcodectl list '^16\.'`.
 
 ```
-$ xcodectl list-installed
+$ xcodectl installed
 VERSION     BUILD     SIZE    PATH
 27.2        27B5019j  3.3 GB  /Applications/Xcode-27.2-beta1.app  * active
   iOS 27.2  24B5084k  7.6 GB
@@ -242,7 +243,7 @@ and these runtimes publicly. Older ones, back to iOS 16, tvOS 16, watchOS 9 and 
 with your Apple session, like an Xcode.
 
 ```
-$ xcodectl runtime list
+$ xcodectl list runtimes
 PLATFORM  VERSION    BUILD     SIZE    STATUS
 iOS       27.2 beta  24B5084k  7.6 GB
 iOS       27.1 beta  24A94401  7.3 GB  installed
@@ -252,16 +253,16 @@ watchOS   27.0       24R362    3.6 GB
 visionOS  27.0       24M362    7.0 GB
 ```
 
-`--platform ios|tvos|watchos|visionos` narrows it, `--stable` and `--beta` pick one kind, `--all`
-shows every version instead of the newest major of each platform.
+`xcodectl list ios` (or `tvos`, `watchos`, `visionos`) narrows it, `--stable` and `--beta` pick one
+kind, `--all` shows every version instead of the newest major of each platform.
 
 Install the runtime matching an Xcode, or an exact one:
 
 ```
-xcodectl runtime install ios              # the one matching the active Xcode
-xcodectl runtime install tvos 26.0
-xcodectl runtime install ios 17           # the newest iOS 17 release: 17.5
-xcodectl runtime install ios --xcode 27.0 # through that Xcode, without selecting it
+xcodectl install ios              # the one matching the active Xcode
+xcodectl install tvos 26.0
+xcodectl install ios 17           # the newest iOS 17 release: 17.5
+xcodectl install ios --xcode 27.0 # through that Xcode, without selecting it
 ```
 
 Install Xcode and its runtimes in one go:
@@ -275,18 +276,18 @@ Runtimes are several gigabytes each, and a deleted one only gives its space back
 registration referencing it is gone. `remove` says which happened:
 
 ```
-$ xcodectl runtime remove tvos 27.0
+$ xcodectl remove tvos 27.0
    ✔︎ Removed tvOS 27.0 (24J360)
 i Info
   Freed 3.4 GB
 ```
 
 An interrupted download leaves a registration that `simctl runtime list` does not print while it
-still holds gigabytes. `xcodectl runtime list-installed` shows those, and `prune` clears them:
+still holds gigabytes. `xcodectl installed runtimes` shows those, and `prune` clears them:
 
 ```
-xcodectl runtime prune --dry-run   # what would go, and how much it frees
-xcodectl runtime prune
+xcodectl prune --dry-run   # what would go, and how much it frees
+xcodectl prune
 ```
 
 Runtimes back to iOS 16, tvOS 16, watchOS 9 and visionOS 1 are supported. Apple limits iOS 16,
@@ -305,7 +306,7 @@ git clone https://github.com/bonkey/xcodectl && cd xcodectl && just install
 ## Shell completion
 
 Commands, options and their values complete; `approve`, `select`, `remove` and
-`runtime install --xcode` also offer the installed versions.
+`install --xcode` also offer the installed versions, and `remove` the platforms.
 
 ```
 eval "$(xcodectl --generate-completion-script zsh)"    # ~/.zshrc, after compinit

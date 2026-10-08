@@ -201,7 +201,7 @@ final class RuntimesTests: XCTestCase {
     func testResolveRejectsAnUnknownVersion() throws {
         let runtimes = try makeCatalog()
         XCTAssertThrowsError(try Runtimes.resolve("99.0", platform: .ios, in: runtimes)) { error in
-            XCTAssertTrue("\(error)".contains("`xcodectl runtime list --platform ios --all`"), "\(error)")
+            XCTAssertTrue("\(error)".contains("`xcodectl list ios --all`"), "\(error)")
         }
     }
 

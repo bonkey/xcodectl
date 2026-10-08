@@ -159,7 +159,7 @@ enum Installed {
         if let hit = installed.first(where: { query.matchesNumber($0.version) }) {
             return hit
         }
-        throw Fail("\(raw) is not installed; see `xcodectl list-installed`")
+        throw Fail("\(raw) is not installed; see `xcodectl installed`")
     }
 }
 
