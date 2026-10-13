@@ -155,7 +155,7 @@ func releaseRows(_ releases: [Release], installed: [InstalledXcode], active: Str
 
 /// The installed app each row reports, by row index. A release candidate and its final release share
 /// a build, so the final row takes the app and the candidate row stays empty.
-private func statusOwners(
+func statusOwners(
     _ releases: [Release],
     _ installed: [InstalledXcode],
     active: String?)
@@ -216,12 +216,32 @@ struct AuthCommand: AsyncParsableCommand {
         static let configuration =
             CommandConfiguration(abstract: "Ask Apple whether the session is still signed in; exits 1 when not.")
 
+        @Flag(help: "Print JSON; still exits 1 when not signed in.")
+        var json = false
+
         func run() async throws {
             guard let (cookies, source) = try Session.load() else {
-                throw Fail("not signed in: run `xcodectl auth login`")
+                try signedOut("not signed in: run `xcodectl auth login`")
             }
-            _ = try await Session.refreshTicket(cookies)
-            ui.success("Signed in (\(source == .keychain ? "Keychain" : Session.envKey)).")
+            do {
+                _ = try await Session.refreshTicket(cookies)
+            } catch let expired as SessionExpired where json {
+                try signedOut(expired.description)
+            }
+            guard json else {
+                ui.success("Signed in (\(source == .keychain ? "Keychain" : Session.envKey)).")
+                return
+            }
+            try printJSON(SessionJSON(signedIn: true, source: source == .keychain ? "keychain" : "environment"))
+        }
+
+        /// With `--json`, the reason goes to stdout as JSON and the exit code alone tells the failure.
+        private func signedOut(_ reason: String) throws -> Never {
+            guard json else {
+                throw Fail(reason)
+            }
+            try printJSON(SessionJSON(signedIn: false, reason: reason))
+            throw ExitCode.failure
         }
     }
 
@@ -305,6 +325,9 @@ struct List: AsyncParsableCommand {
     @Flag
     var order: Releases.Order?
 
+    @Flag(help: "Print JSON instead of a table; nothing found is [].")
+    var json = false
+
     func validate() throws {
         guard !(stable && beta) else {
             throw Fail("--stable and --beta exclude each other")
@@ -330,10 +353,14 @@ struct List: AsyncParsableCommand {
             } else {
                 Releases.defaultListing(all, stable ? .stable : beta ? .beta : .current)
             }
-        guard !shown.isEmpty else {
+        guard !shown.isEmpty || json else {
             throw Fail("nothing matches \(pattern ?? "")")
         }
         let sorted = Releases.sorted(shown, by: order ?? .byVersion)
+        if json {
+            try await printJSON(releaseJSON(sorted, requirements: requirements))
+            return
+        }
         let marks = await Compatibility.column(sorted, requirements: requirements)
         printTable(zip(releaseRows(sorted), marks).map { $0 + [$1] })
     }
@@ -349,8 +376,12 @@ struct List: AsyncParsableCommand {
         let shown = all
             ? Runtimes.filter(catalog.filter { platform == nil || $0.platform == platform }, kind)
             : Runtimes.defaultListing(catalog, platform: platform, kind)
-        guard !shown.isEmpty else {
+        guard !shown.isEmpty || json else {
             throw Fail("no runtimes match")
+        }
+        if json {
+            try printJSON(runtimeJSON(shown, installed: installed))
+            return
         }
         printTable(runtimeRows(shown, installed: installed))
     }
@@ -377,6 +408,9 @@ struct ListInstalled: AsyncParsableCommand {
     @Flag(help: "Skip sizing each Xcode, which reads every file in its bundle.")
     var noSize = false
 
+    @Flag(help: "Print JSON instead of a table; nothing installed is [].")
+    var json = false
+
     func validate() throws {
         if runtimes != nil {
             try rejectXcodeOnly(["--no-size": noSize])
@@ -390,7 +424,11 @@ struct ListInstalled: AsyncParsableCommand {
         }
         let installed = Installed.all()
         guard !installed.isEmpty else {
-            throw Fail("no Xcode installed in /Applications")
+            guard json else {
+                throw Fail("no Xcode installed in /Applications")
+            }
+            try printJSON([InstalledXcodeJSON]())
+            return
         }
         let registered = (try? SimCtl.runtimes()) ?? []
         let used = await withTaskGroup(of: (Int, [InstalledRuntime]).self) { group in
@@ -408,11 +446,11 @@ struct ListInstalled: AsyncParsableCommand {
         let active = Installed.activePath()?.standardizedFileURL.path
         var entries = zip(installed, used).map { (xcode: $0, size: Int64?.none, runtimes: $1) }
         guard !noSize else {
-            printTable(installedRows(entries, active: active))
+            try show(entries, active: active)
             return
         }
-        // Redrawing in place needs a terminal; a pipe or a CI log gets the finished table once.
-        let live = isInteractive ? Renderer() : nil
+        // Redrawing in place needs a terminal; a pipe, a CI log or --json gets the finished listing once.
+        let live = isInteractive && !json ? Renderer() : nil
         let draw = { live?.render(
             tableLines(installedRows(entries, active: active, unknownSize: "…")).joined(separator: "\n"),
             standardPipeline: StandardOutputPipeline()) }
@@ -427,14 +465,31 @@ struct ListInstalled: AsyncParsableCommand {
             }
         }
         if live == nil {
+            try show(entries, active: active)
+        }
+    }
+
+    /// The finished Xcode listing: JSON with `--json`, else the table.
+    private func show(
+        _ entries: [(xcode: InstalledXcode, size: Int64?, runtimes: [InstalledRuntime])],
+        active: String?)
+        throws
+    {
+        if json {
+            try printJSON(installedJSON(entries, active: active))
+        } else {
             printTable(installedRows(entries, active: active))
         }
     }
 
     private func listRuntimes(_ platform: RuntimePlatform?) throws {
         let installed = try SimCtl.runtimes().filter { platform == nil || $0.platform == platform }
-        guard !installed.isEmpty else {
+        guard !installed.isEmpty || json else {
             throw Fail("no \(platform?.display ?? "simulator") runtime installed")
+        }
+        if json {
+            try printJSON(registrationJSON(installed))
+            return
         }
         var rows = [["PLATFORM", "VERSION", "BUILD", "SIZE", "STATE", "IDENTIFIER"]]
         for runtime in installed {

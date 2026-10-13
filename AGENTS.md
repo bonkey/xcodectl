@@ -40,6 +40,7 @@ assertion into the requesting iframe.
 Sources/xcodectl/
   XcodeCtl.swift     commands, pickers, tables (Noora for TUI)
   Releases.swift     data.json model, version query parsing/matching, listing
+  JSONOutput.swift   `--json` shapes of list, installed and auth status, built from the same inputs as the tables
   ReleaseNotes.swift notes as Markdown (URL + ".md"), terminal rendering, plain text, diff of two, model summary and answers from the whole notes (only file importing AnyLanguageModel)
   HostedModel.swift  provider, base URL and API key from options and environment, default model
   Session.swift      cookie model, Keychain, XCODECTL_SESSION, download-ticket refresh
@@ -90,6 +91,9 @@ Sources/xcodectl/
   the whole notes in one request; do not split them to fit a small model.
 - Errors: throw `Fail("one actionable line")`; ArgumentParser prints it and exits 1.
 - Pickers only when stdin and stdout are a TTY; otherwise a missing argument is an error.
+- `--json` (`list`, `installed`, `auth status`) prints the table's facts as typed values and nothing
+  else on stdout; nothing found is `[]`. Its keys are a contract for scripts and agents: renaming or
+  removing one is a breaking change, and `JSONOutputTests` pins them.
 - Installed Xcodes are matched by `Contents/version.plist` `ProductBuildVersion`, never by
   directory name, so apps installed by other tools resolve too.
 - Whether an Xcode runs on this Mac is extra: when Apple's system requirements page cannot be

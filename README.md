@@ -76,6 +76,41 @@ once with `…` in place of each Xcode's size and fills in, a pipe gets the fini
 `xcodectl remove` deletes those runtimes along with the Xcode, except the ones another installed
 Xcode still uses; `--keep-runtimes` keeps them all.
 
+### JSON
+
+`list`, `installed` (also for runtimes) and `auth status` take `--json`, for scripts and agents:
+
+```
+$ xcodectl installed --json
+[
+  {
+    "active" : true,
+    "build" : "27B5019j",
+    "path" : "/Applications/Xcode-27.2-beta1.app",
+    "runtimes" : [
+      {
+        "build" : "24B5084k",
+        "platform" : "ios",
+        "size" : 8163172705,
+        "version" : "27.2"
+      }
+    ],
+    "size" : 3585789952,
+    "version" : "27.2"
+  }
+]
+```
+
+Stdout then holds the JSON and nothing else; errors stay on stderr with exit 1. The JSON carries
+the table's facts as values: sizes in bytes, booleans for `installed` and `active`, dates as
+`YYYY-MM-DD`, platforms as `ios`, `tvos`, `watchos` or `visionos`. `version` and `build` are what
+`install`, `select` and `remove` take. In `list --json`, `macOS` holds `minimum`, `newest` and
+`runsHere`, whether this Mac's macOS is in that range. A value that is not known leaves its key
+out: `size` with `--no-size`, `newest` when Apple names no upper bound, `runsHere` when Apple's
+system requirements page cannot be fetched or has no row for that Xcode. Nothing found is `[]`,
+exit 0. `auth status --json` prints `{"signedIn": true, "source": "keychain"}` (or `"environment"`), or
+`signedIn: false` with the `reason` and exit 1.
+
 ## Release notes
 
 No login needed.
@@ -355,7 +390,8 @@ so `auth import` and `install` fail with "User interaction is not allowed". Run
 `security unlock-keychain` in that ssh session first, do the import from a GUI session (Screen
 Sharing), or use `XCODECTL_SESSION`. Runners launched in the logged-in session are not affected.
 Apple's login session lasts weeks; `xcodectl auth status` asks Apple whether it still holds and
-exits 1 when not. When it has expired, run `auth login` and export again.
+exits 1 when not (`--json` adds `signedIn` and the reason on stdout). When it has expired, run
+`auth login` and export again.
 
 ## How it works
 

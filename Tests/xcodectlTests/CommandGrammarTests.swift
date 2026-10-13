@@ -37,6 +37,14 @@ final class CommandGrammarTests: XCTestCase {
         XCTAssertNil(installed.runtimes)
     }
 
+    func testTheInformationCommandsTakeJSON() throws {
+        XCTAssertTrue(try XCTUnwrap(XcodeCtl.parseAsRoot(["list", "--json"]) as? List).json)
+        XCTAssertTrue(try XCTUnwrap(XcodeCtl.parseAsRoot(["list", "ios", "--all", "--json"]) as? List).json)
+        XCTAssertTrue(try XCTUnwrap(XcodeCtl.parseAsRoot(["installed", "--no-size", "--json"]) as? ListInstalled).json)
+        XCTAssertTrue(try XCTUnwrap(XcodeCtl.parseAsRoot(["installed", "runtimes", "--json"]) as? ListInstalled).json)
+        XCTAssertTrue(try XCTUnwrap(XcodeCtl.parseAsRoot(["auth", "status", "--json"]) as? AuthCommand.Status).json)
+    }
+
     // MARK: - Runtimes
 
     func testRuntimeWordsAreRecognized() {
