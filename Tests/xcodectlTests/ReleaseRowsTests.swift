@@ -7,22 +7,22 @@ import Foundation
 import Testing
 
 struct ReleaseRowsTests {
-    @Test func oneInstalledAppFillsOneRow() {
+    @Test func `one installed app fills one row`() {
         let rows = releaseRows([finalRelease, candidate], installed: [app], active: nil)
         #expect(rows.map(\.last) == ["STATUS", "installed", ""])
     }
 
-    @Test func theActiveAppIsMarkedActive() {
+    @Test func `the active app is marked active`() {
         let rows = releaseRows([finalRelease, candidate], installed: [app], active: app.path.path)
         #expect(rows.map(\.last) == ["STATUS", "* active", ""])
     }
 
-    @Test func nothingInstalledLeavesEveryStatusEmpty() {
+    @Test func `nothing installed leaves every status empty`() {
         let rows = releaseRows([finalRelease, candidate], installed: [], active: nil)
         #expect(rows.map(\.last) == ["STATUS", "", ""])
     }
 
-    @Test func aRowWithoutAMatchingBuildStaysEmpty() {
+    @Test func `a row without a matching build stays empty`() {
         let older = makeRelease("26.6", "26F71", (2026, 8, 12))
         let rows = releaseRows([finalRelease, older], installed: [app], active: nil)
         #expect(rows.map(\.last) == ["STATUS", "installed", ""])

@@ -12,33 +12,33 @@ import Testing
 struct JSONOutputTests {
     // MARK: - list
 
-    @Test func onlyTheFinalOfASharedBuildIsInstalled() {
+    @Test func `only the final of a shared build is installed`() {
         let listed = entries([finalRelease, candidate], installed: [app], active: nil)
         #expect(listed.map(\.installed) == [true, false])
         #expect(listed.map(\.active) == [false, false])
     }
 
-    @Test func theActiveAppIsMarkedActive() {
+    @Test func `the active app is marked active`() {
         let listed = entries([finalRelease, candidate], installed: [app], active: app.path.path)
         #expect(listed.map(\.active) == [true, false])
     }
 
-    @Test func aPrereleaseIsMarked() {
+    @Test func `a prerelease is marked`() {
         #expect(entries([finalRelease, candidate], installed: [], active: nil).map(\.prerelease) == [false, true])
     }
 
-    @Test func withoutAMinimumMacOSTheKeyIsLeftOut() {
+    @Test func `without a minimum macOS the key is left out`() {
         #expect(entries([finalRelease], installed: [], active: nil)[0].macOS == nil)
     }
 
-    @Test func aMacOSOlderThanTheMinimumDoesNotRunIt() {
+    @Test func `a macOS older than the minimum does not run it`() {
         let release = makeRelease("27.0", "27A266a", (2026, 9, 14), requires: "26.6")
         #expect(
             entries([release], installed: [], active: nil, macOS: "26.4")[0].macOS ==
                 .init(minimum: "26.6", newest: nil, runsHere: false))
     }
 
-    @Test func aMacOSNewerThanTheNewestSupportedDoesNotRunIt() {
+    @Test func `a macOS newer than the newest supported does not run it`() {
         let release = makeRelease("26.4", "17E192", (2026, 3, 24), requires: "26.2")
         let requirements = [SystemRequirements.Row(xcode: "26.4", newestMacOS: "26.x")]
         #expect(
@@ -46,21 +46,21 @@ struct JSONOutputTests {
                 .init(minimum: "26.2", newest: "26.x", runsHere: false))
     }
 
-    @Test func aSupportedMacOSRunsIt() {
+    @Test func `a supported macOS runs it`() {
         let release = makeRelease("27.0", "27A266a", (2026, 9, 14), requires: "26.6")
         #expect(
             entries([release], installed: [], active: nil, requirements: unbounded)[0].macOS ==
                 .init(minimum: "26.6", newest: nil, runsHere: true))
     }
 
-    @Test func withoutAnAppleRowWhetherItRunsIsUnknown() {
+    @Test func `without an Apple row whether it runs is unknown`() {
         let release = makeRelease("27.0", "27A266a", (2026, 9, 14), requires: "26.6")
         #expect(
             entries([release], installed: [], active: nil)[0].macOS ==
                 .init(minimum: "26.6", newest: nil, runsHere: nil))
     }
 
-    @Test func aReleaseEncodes() throws {
+    @Test func `a release encodes`() throws {
         let release = makeRelease("27.0", "27A266a", (2026, 9, 14), requires: "26.6")
         let listed = entries([release], installed: [app], active: app.path.path, requirements: unbounded)
         #expect(try encodeJSON(listed) == """
@@ -83,7 +83,7 @@ struct JSONOutputTests {
 
     // MARK: - list <platform>
 
-    @Test func aCatalogRuntimeIsInstalledWhenAReadyRegistrationHasItsBuild() throws {
+    @Test func `a catalog runtime is installed when a ready registration has its build`() throws {
         let installed = try SimCtl.parse(makeSimctlOutput([
             ("A", "com.apple.platform.iphonesimulator", "27.0", "24A1", "Ready", 1, "/a.asset/AssetData"),
             ("B", "com.apple.platform.appletvsimulator", "27.0", "24J1", "Unusable", 1, "/b.asset/AssetData"),
@@ -93,21 +93,21 @@ struct JSONOutputTests {
         #expect(entries.first { $0.build == "24J1" }?.installed == false)
     }
 
-    @Test func theBetaRuntimeIsAPrerelease() throws {
+    @Test func `the beta runtime is a prerelease`() throws {
         let entries = try runtimeJSON(makeCatalog(), installed: [])
         #expect(entries.first { $0.build == "24A51" }?.prerelease == true)
         #expect(entries.first { $0.build == "24A51" }?.version == "27.0")
         #expect(entries.first { $0.build == "24A1" }?.prerelease == false)
     }
 
-    @Test func aRuntimeWithoutASizeLeavesItOut() throws {
+    @Test func `a runtime without a size leaves it out`() throws {
         let catalog = try Runtimes.parse(makeIndex([
             makeEntry(platform: "com.apple.platform.iphoneos", version: "27.0", build: "24A1", size: 0),
         ]))
         #expect(runtimeJSON(catalog, installed: [])[0].size == nil)
     }
 
-    @Test func aRuntimeEncodes() throws {
+    @Test func `a runtime encodes`() throws {
         let catalog = try Runtimes.parse(makeIndex([
             makeEntry(platform: "com.apple.platform.iphoneos", version: "27.0", build: "24A1"),
         ]))
@@ -127,16 +127,16 @@ struct JSONOutputTests {
 
     // MARK: - installed
 
-    @Test func anUnsizedXcodeLeavesItsSizeOut() {
+    @Test func `an unsized Xcode leaves its size out`() {
         #expect(installedJSON([(app, nil, [])], active: nil)[0].size == nil)
     }
 
-    @Test func theActiveXcodeIsMarkedActive() {
+    @Test func `the active Xcode is marked active`() {
         let entries = installedJSON([(app, 0, []), (beta, 0, [])], active: beta.path.path)
         #expect(entries.map(\.active) == [false, true])
     }
 
-    @Test func anInstalledXcodeEncodesWithTheRuntimesItUses() throws {
+    @Test func `an installed Xcode encodes with the runtimes it uses`() throws {
         let entries = try installedJSON([(app, 3_583_873_024, registrations())], active: app.path.path)
         #expect(try encodeJSON(entries) == """
         [
@@ -161,7 +161,7 @@ struct JSONOutputTests {
 
     // MARK: - installed runtimes
 
-    @Test func aRegistrationEncodesWithItsStateAndIdentifier() throws {
+    @Test func `a registration encodes with its state and identifier`() throws {
         #expect(try encodeJSON(registrationJSON(registrations())) == """
         [
           {
@@ -176,7 +176,7 @@ struct JSONOutputTests {
         """)
     }
 
-    @Test func aRegistrationOfAnUnknownPlatformLeavesItOut() throws {
+    @Test func `a registration of an unknown platform leaves it out`() throws {
         let runtimes = try SimCtl.parse(makeSimctlOutput([
             ("A", "com.apple.platform.unknown", "1.0", "1A1", "Unusable", 0, "/a.dmg"),
         ]))
@@ -185,7 +185,7 @@ struct JSONOutputTests {
 
     // MARK: - auth status
 
-    @Test func aSignedInSessionEncodesItsSource() throws {
+    @Test func `a signed-in session encodes its source`() throws {
         #expect(try encodeJSON(SessionJSON(signedIn: true, source: "keychain")) == """
         {
           "signedIn" : true,
@@ -194,7 +194,7 @@ struct JSONOutputTests {
         """)
     }
 
-    @Test func aSignedOutSessionEncodesTheReason() throws {
+    @Test func `a signed-out session encodes the reason`() throws {
         #expect(try encodeJSON(SessionJSON(signedIn: false, reason: "not signed in")) == """
         {
           "reason" : "not signed in",

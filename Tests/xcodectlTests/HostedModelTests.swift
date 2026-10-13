@@ -7,12 +7,12 @@ import Foundation
 import Testing
 
 struct HostedModelTests {
-    @Test func noKeyIsAnError() {
+    @Test func `no key is an error`() {
         #expect(throws: Error.self) { try HostedModel.resolve(environment: [:]) }
         #expect(throws: Error.self) { try HostedModel.resolve(environment: ["OPENAI_API_KEY": ""]) }
     }
 
-    @Test func theOpenRouterKeyComesBeforeTheOpenAIKey() throws {
+    @Test func `the OpenRouter key comes before the OpenAI key`() throws {
         let both = try HostedModel.resolve(environment: keys)
         #expect(both.provider == .openrouter)
         #expect(both.place == "OpenRouter")
@@ -28,7 +28,7 @@ struct HostedModelTests {
         #expect(openai.defaultModel == "gpt-5.6-luna")
     }
 
-    @Test func theGeminiKeyComesLast() throws {
+    @Test func `the Gemini key comes last`() throws {
         let gemini = try HostedModel.resolve(environment: ["GEMINI_API_KEY": "gm-key"])
         #expect(gemini.provider == .gemini)
         #expect(gemini.place == "Gemini")
@@ -43,13 +43,13 @@ struct HostedModelTests {
             provider: .gemini).apiKey == "gm-key")
     }
 
-    @Test func theProviderNamesItsKeyVariable() throws {
+    @Test func `the provider names its key variable`() throws {
         let router = try HostedModel.resolve(environment: keys, provider: .openrouter, model: "x/y")
         #expect(router.apiKey == "sk-or-router")
         #expect(router.model == "x/y")
     }
 
-    @Test func aNamedKeyVariableGoesToOpenAIUnlessAProviderIsGiven() throws {
+    @Test func `a named key variable goes to OpenAI unless a provider is given`() throws {
         #expect(try HostedModel.resolve(environment: keys, keyEnv: "MY_KEY").provider == .openai)
         let router = try HostedModel.resolve(environment: keys, keyEnv: "MY_KEY", provider: .openrouter)
         #expect(router.apiKey == "sk-mine")
@@ -57,7 +57,7 @@ struct HostedModelTests {
         #expect(router.baseURL.absoluteString == "https://openrouter.ai/api/v1")
     }
 
-    @Test func aBaseURLReplacesTheOneOfTheProviderAndNeedsAModel() throws {
+    @Test func `a base URL replaces the one of the provider and needs a model`() throws {
         let custom = try HostedModel.resolve(
             environment: keys, keyEnv: "MY_KEY", baseURL: "http://localhost:1234/v1", model: "m")
         #expect(custom.baseURL.absoluteString == "http://localhost:1234/v1")
@@ -67,7 +67,7 @@ struct HostedModelTests {
         #expect(throws: Error.self) { try HostedModel.resolve(environment: keys, baseURL: "not a url", model: "m") }
     }
 
-    @Test func onlyABaseURLGoesWithoutAKey() throws {
+    @Test func `only a base URL goes without a key`() throws {
         let local = try HostedModel.resolve(environment: [:], baseURL: "http://localhost:11434/v1", model: "m")
         #expect(local.keyVariable == nil)
         #expect(local.apiKey == "")
@@ -80,7 +80,7 @@ struct HostedModelTests {
         }
     }
 
-    @Test func anOptionWithoutItsKeyIsAnError() {
+    @Test func `an option without its key is an error`() {
         #expect(throws: Error.self) { try HostedModel.resolve(environment: [:], keyEnv: "MY_KEY") }
         #expect(throws: Error.self) {
             try HostedModel.resolve(environment: ["OPENAI_API_KEY": "k"], provider: .openrouter)

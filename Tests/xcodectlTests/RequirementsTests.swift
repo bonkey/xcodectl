@@ -7,7 +7,7 @@ import Foundation
 import Testing
 
 struct RequirementsTests {
-    @Test func parseReadsTheXcodeAndTheNewestMacOSOfEveryRow() {
+    @Test func `parse reads the Xcode and the newest macOS of every row`() {
         #expect(SystemRequirements.parse(page) == [
             .init(xcode: "27.1", newestMacOS: nil),
             .init(xcode: "27", newestMacOS: nil),
@@ -22,7 +22,7 @@ struct RequirementsTests {
         ])
     }
 
-    @Test func parseSkipsTablesWithoutASupportedMacOSColumn() {
+    @Test func `parse skips tables without a supported macOS column`() {
         let sdks = """
         <table><tr><th>Xcode Version</th><th>macOS SDK</th></tr>
         <tr><td>Xcode 27</td><td>macOS 27</td></tr></table>
@@ -31,7 +31,7 @@ struct RequirementsTests {
         #expect(SystemRequirements.parse("<html><body>Service unavailable</body></html>") == [])
     }
 
-    @Test func parseReadsCellsWithNumericEntitiesAndARowHeading() {
+    @Test func `parse reads cells with numeric entities and a row heading`() {
         let table = """
         <table><tr><th>Xcode Version</th><th>Supported macOS Versions</th></tr>
         <tr><th scope="row">Xcode&#160;27</th><td>macOS&#160;Tahoe&#160;26.6&#160;or&#160;later</td></tr>
@@ -43,7 +43,7 @@ struct RequirementsTests {
         ])
     }
 
-    @Test func rowIsTheOneOfTheVersionElseOfItsMajorAndMinor() {
+    @Test func `row is the one of the version else of its major and minor`() {
         let rows = SystemRequirements.parse(page)
         func row(_ number: String, _ kind: Release.Kind = .init(release: true)) -> String? {
             SystemRequirements.row(for: makeRelease(number, "", (2026, 1, 1), kind: kind), in: rows)?.xcode
@@ -60,7 +60,7 @@ struct RequirementsTests {
         #expect(row("13.4.1") == nil)
     }
 
-    @Test func isAtMostComparesTheComponentsBeforeTheX() {
+    @Test func `is at most compares the components before the x`() {
         #expect(Compatibility.isAtMost("25.6.0", "26.x"))
         #expect(Compatibility.isAtMost("26.0.0", "26.x"))
         #expect(Compatibility.isAtMost("26.9.3", "26.x"))
@@ -69,42 +69,42 @@ struct RequirementsTests {
         #expect(!Compatibility.isAtMost("26.2.0", "26.1.x"))
     }
 
-    @Test func supportedFromTheMinimumOnWhenThePageSetsNoLimit() {
+    @Test func `supported from the minimum on when the page sets no limit`() {
         #expect(compatibility("27.0", requires: "26.6", on: "26.6.0") == .supported)
         #expect(compatibility("27.0", requires: "26.6", on: "99.0.0") == .supported)
         #expect(compatibility("27.0", .init(beta: 3), requires: "26.4", on: "26.4.1") == .supported)
     }
 
-    @Test func needsMacOSBelowTheMinimumOfItsBuild() {
+    @Test func `needs macOS below the minimum of its build`() {
         #expect(compatibility("27.0", requires: "26.6", on: "26.5.9") == .needsMacOS("26.6"))
         #expect(compatibility("27.0", .init(beta: 3), requires: "26.4", on: "26.3.0") == .needsMacOS("26.4"))
     }
 
-    @Test func onlyUpToMacOSPastTheNewestOnThePage() {
+    @Test func `only up to macOS past the newest on the page`() {
         #expect(compatibility("26.6", requires: "26.2", on: "26.9.1") == .supported)
         #expect(compatibility("26.6", requires: "26.2", on: "27.0.0") == .onlyUpToMacOS("26.x"))
         #expect(compatibility("16.4", requires: "15.3", on: "26.1.9") == .supported)
         #expect(compatibility("16.4", requires: "15.3", on: "26.2.0") == .onlyUpToMacOS("26.1.x"))
     }
 
-    @Test func unknownWithoutARowOrAMinimum() {
+    @Test func `unknown without a row or a minimum`() {
         #expect(compatibility("13.4.1", requires: "12.5", on: "27.0.0") == .unknown)
         #expect(compatibility("27.0", requires: nil, on: "27.0.0") == .unknown)
     }
 
-    @Test func withoutThePageOnlyAMissingMinimumIsKnown() {
+    @Test func `without the page only a missing minimum is known`() {
         #expect(compatibility("27.0", requires: "26.6", on: "26.2.0", page: "") == .needsMacOS("26.6"))
         #expect(compatibility("27.0", requires: "26.6", on: "27.0.0", page: "") == .unknown)
     }
 
-    @Test func textMarksTheRangeOfMacOSVersions() {
+    @Test func `text marks the range of macOS versions`() {
         #expect(Compatibility.supported.text(range: "26.6 or later").plain() == "✓ 26.6 or later")
         #expect(Compatibility.needsMacOS("26.6").text(range: "26.6 or later").plain() == "✗ 26.6 or later")
         #expect(Compatibility.onlyUpToMacOS("26.x").text(range: "26.2–26.x").plain() == "✗ 26.2–26.x")
         #expect(Compatibility.unknown.text(range: "from 12.5").plain() == "from 12.5")
     }
 
-    @Test func rangeRunsFromTheMinimumToTheNewestOnThePage() {
+    @Test func `range runs from the minimum to the newest on the page`() {
         let rows = SystemRequirements.parse(page)
         #expect(
             Compatibility.range(of: makeRelease("26.6", "", (2026, 1, 1), requires: "26.2"), requirements: rows) ==
@@ -122,7 +122,7 @@ struct RequirementsTests {
             .range(of: makeRelease("27.0", "", (2026, 1, 1), requires: nil), requirements: rows) == nil)
     }
 
-    @Test func addingPutsTheLineUnderTheTitle() {
+    @Test func `adding puts the line under the title`() {
         #expect(
             Compatibility.adding("On this Mac", to: "# Xcode 27 Release Notes\n\nOverview.\n\n## Swift") ==
                 "# Xcode 27 Release Notes\n\nOn this Mac\n\nOverview.\n\n## Swift")

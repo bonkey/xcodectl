@@ -21,7 +21,7 @@ final class RuntimeAssetTests {
 
     // MARK: - Lookup
 
-    @Test func requestAsksForOneBuildOfThePlatformsAssetType() throws {
+    @Test func `request asks for one build of the platform's asset type`() throws {
         let runtime = SimulatorRuntime(
             name: "tvOS 18.5 Simulator Runtime",
             platform: .tvos,
@@ -43,7 +43,7 @@ final class RuntimeAssetTests {
         #expect(body["RequestedBuild"] as? String == "22L572")
     }
 
-    @Test func parseReadsTheArchiveItsKeyAndItsChecksum() throws {
+    @Test func `parse reads the archive, its key and its checksum`() throws {
         let asset = try RuntimeAsset.parse(makeToken(iOS186), build: "22G86")
         #expect(
             asset.url.absoluteString ==
@@ -54,16 +54,16 @@ final class RuntimeAssetTests {
     }
 
     /// Betas carry a lowercase letter ("22A5282m"); the build matches whatever its case.
-    @Test func parseMatchesTheBuildIgnoringCase() throws {
+    @Test func `parse matches the build ignoring case`() throws {
         #expect(throws: Never.self) { try RuntimeAsset.parse(makeToken(iOS186), build: "22g86") }
     }
 
-    @Test func parseRejectsAnAnswerForAnotherBuild() throws {
+    @Test func `parse rejects an answer for another build`() throws {
         #expect(throws: Error.self) { try RuntimeAsset.parse(makeToken(iOS186), build: "22F76") }
     }
 
     /// The server answers an unknown build with HTTP 422 and a token whose payload says why.
-    @Test func parseReportsTheServersMessageForAnUnknownBuild() throws {
+    @Test func `parse reports the server's message for an unknown build`() throws {
         let answer = #"{"Status": "422 Unprocessable Entity", "Message": "Build not found: 99Z999"}"#
         let error = try #require(throws: Error.self) {
             try RuntimeAsset.parse(makeToken(answer), build: "99Z999")
@@ -71,7 +71,7 @@ final class RuntimeAssetTests {
         #expect("\(error)".contains("Build not found: 99Z999"), "\(error)")
     }
 
-    @Test func parseRejectsAnAnswerThatIsNotAToken() {
+    @Test func `parse rejects an answer that is not a token`() {
         #expect(throws: Error.self) {
             try RuntimeAsset.parse(Data("<html>Service Unavailable</html>".utf8), build: "22G86")
         }
@@ -79,7 +79,7 @@ final class RuntimeAssetTests {
 
     // MARK: - Verify
 
-    @Test func verifyKeepsAnArchiveThatMatches() throws {
+    @Test func `verify keeps an archive that matches`() throws {
         let archive = root.appendingPathComponent("a.aar")
         try Data("archive".utf8).write(to: archive)
         let asset = makeAsset(sha256: Data(SHA256.hash(data: Data("archive".utf8))))
@@ -88,7 +88,7 @@ final class RuntimeAssetTests {
     }
 
     /// A corrupt download goes, so the next run downloads it again instead of failing the same way.
-    @Test func verifyDeletesAnArchiveThatDoesNotMatch() throws {
+    @Test func `verify deletes an archive that does not match`() throws {
         let archive = root.appendingPathComponent("a.aar")
         try Data("archive".utf8).write(to: archive)
         let asset = makeAsset(sha256: Data(SHA256.hash(data: Data("other".utf8))))
@@ -98,7 +98,7 @@ final class RuntimeAssetTests {
 
     // MARK: - Extract
 
-    @Test func extractWritesTheDiskImageOfTheExtractOperation() throws {
+    @Test func `extract writes the disk image of the extract operation`() throws {
         let key = SymmetricKey(size: .bits256)
         let image = makeImage()
         let archive = try makeArchive(key: key, image: image)
@@ -109,7 +109,7 @@ final class RuntimeAssetTests {
         #expect(try Data(contentsOf: extracted) == image)
     }
 
-    @Test func extractRejectsTheWrongKey() throws {
+    @Test func `extract rejects the wrong key`() throws {
         let archive = try makeArchive(key: SymmetricKey(size: .bits256), image: makeImage())
         let asset = makeAsset(key: SymmetricKey(size: .bits256).withUnsafeBytes { Data($0) })
         let error = try #require(throws: Error.self) {

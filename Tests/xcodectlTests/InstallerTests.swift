@@ -17,7 +17,7 @@ final class InstallerTests {
         try? FileManager.default.removeItem(at: root)
     }
 
-    @Test func expandDirectoryPrefersTheFirstRoot() throws {
+    @Test func `expand directory prefers the first root`() throws {
         let first = root.appendingPathComponent("first/tmp")
         let second = root.appendingPathComponent("second/tmp")
         #expect(
@@ -26,7 +26,7 @@ final class InstallerTests {
         #expect(!FileManager.default.fileExists(atPath: second.path))
     }
 
-    @Test func expandDirectoryEmptiesWhatAnEarlierRunOfTheSameBuildLeft() throws {
+    @Test func `expand directory empties what an earlier run of the same build left`() throws {
         let tmp = root.appendingPathComponent("tmp")
         let dir = tmp.appendingPathComponent("27A1")
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -35,7 +35,7 @@ final class InstallerTests {
         #expect(try FileManager.default.contentsOfDirectory(atPath: dir.path) == [])
     }
 
-    @Test func expandDirectoryKeepsAnExpansionAnEarlierRunFinished() throws {
+    @Test func `expand directory keeps an expansion an earlier run finished`() throws {
         let tmp = root.appendingPathComponent("tmp")
         let dir = tmp.appendingPathComponent("27A1")
         try FileManager.default.createDirectory(
@@ -46,7 +46,7 @@ final class InstallerTests {
         #expect(Installer.expanded(in: dir)?.path == dir.appendingPathComponent("Xcode.app").path)
     }
 
-    @Test func expandedIgnoresAnUnfinishedExpansion() throws {
+    @Test func `expanded ignores an unfinished expansion`() throws {
         let dir = root.appendingPathComponent("tmp/27A1")
         try FileManager.default.createDirectory(
             at: dir.appendingPathComponent("Xcode.app"),
@@ -54,7 +54,7 @@ final class InstallerTests {
         #expect(Installer.expanded(in: dir) == nil)
     }
 
-    @Test func expandDirectoryRemovesWhatAnEarlierRunOfAnotherBuildLeft() throws {
+    @Test func `expand directory removes what an earlier run of another build left`() throws {
         let tmp = root.appendingPathComponent("tmp")
         try FileManager.default.createDirectory(
             at: tmp.appendingPathComponent("26F1/Xcode.app"),
@@ -66,7 +66,7 @@ final class InstallerTests {
         #expect(try FileManager.default.contentsOfDirectory(atPath: tmp.path) == ["27A1"])
     }
 
-    @Test func expandDirectoryKeepsTheDirectoryOfAnotherRunningBuild() throws {
+    @Test func `expand directory keeps the directory of another running build`() throws {
         let tmp = root.appendingPathComponent("tmp")
         let other = try Installer.expandDirectory(for: "26F1", in: [tmp])
         try Data().write(to: other.appendingPathComponent("expanding"))
@@ -74,7 +74,7 @@ final class InstallerTests {
         #expect(try FileManager.default.contentsOfDirectory(atPath: other.path) == ["expanding"])
     }
 
-    @Test func expandDirectoryRefusesABuildAnotherRunIsInstalling() throws {
+    @Test func `expand directory refuses a build another run is installing`() throws {
         let tmp = root.appendingPathComponent("tmp")
         let dir = try Installer.expandDirectory(for: "27A1", in: [tmp])
         try Data().write(to: dir.appendingPathComponent("expanding"))
@@ -82,7 +82,7 @@ final class InstallerTests {
         #expect(try FileManager.default.contentsOfDirectory(atPath: dir.path) == ["expanding"])
     }
 
-    @Test func expandDirectoryFallsBackWhenTheFirstRootCannotBeCreated() throws {
+    @Test func `expand directory falls back when the first root cannot be created`() throws {
         try lock()
         let fallback = root.appendingPathComponent("fallback/tmp")
         #expect(
@@ -95,7 +95,7 @@ final class InstallerTests {
         #expect(isDirectory.boolValue)
     }
 
-    @Test func expandDirectoryFallsBackWhenTheFirstRootExistsButIsReadOnly() throws {
+    @Test func `expand directory falls back when the first root exists but is read-only`() throws {
         try lock()
         let fallback = root.appendingPathComponent("fallback/tmp")
         #expect(
@@ -103,7 +103,7 @@ final class InstallerTests {
                 fallback.appendingPathComponent("27A1").path)
     }
 
-    @Test func expandDirectoryThrowsWhenNoRootCanBeCreated() throws {
+    @Test func `expand directory throws when no root can be created`() throws {
         try lock()
         #expect(throws: Error.self) {
             try Installer.expandDirectory(for: "27A1", in: [locked.appendingPathComponent("tmp")])

@@ -7,12 +7,12 @@ import Foundation
 import Testing
 
 struct AutologinTests {
-    @Test func installSignsInByDefault() throws {
+    @Test func `install signs in by default`() throws {
         let install = try #require(XcodeCtl.parseAsRoot(["install", "26.6"]) as? Install)
         #expect(install.autologin)
     }
 
-    @Test func noAutologinTurnsItOff() throws {
+    @Test func `no autologin turns it off`() throws {
         let install = try #require(XcodeCtl.parseAsRoot(["install", "--no-autologin", "26.6"]) as? Install)
         #expect(!install.autologin)
         let update = try #require(XcodeCtl.parseAsRoot(["update", "--no-autologin"]) as? Update)
@@ -22,13 +22,13 @@ struct AutologinTests {
         #expect(!download.autologin)
     }
 
-    @Test func refreshWithoutLoginCookieThrowsSessionExpired() async {
+    @Test func `refresh without login cookie throws session expired`() async {
         await #expect(throws: SessionExpired.self) {
             try await Session.refreshTicket([])
         }
     }
 
-    @Test func validTicketIsReturnedWithoutSigningIn() async throws {
+    @Test func `valid ticket is returned without signing in`() async throws {
         let cookies = [makeCookie("myacinfo"), makeCookie("ADCDownloadAuth", expires: Date() + 3600)]
         let result = try await Session.ensureTicket(cookies, source: .keychain) {
             Issue.record("signed in although the ticket is valid")
@@ -37,7 +37,7 @@ struct AutologinTests {
         #expect(result == cookies)
     }
 
-    @Test func expiredKeychainSessionSignsIn() async throws {
+    @Test func `expired Keychain session signs in`() async throws {
         let fresh = [makeCookie("myacinfo"), makeCookie("ADCDownloadAuth", expires: Date() + 3600)]
         var calls = 0
         let result = try await Session.ensureTicket([], source: .keychain) {
@@ -48,14 +48,14 @@ struct AutologinTests {
         #expect(result == fresh)
     }
 
-    @Test func expiredKeychainSessionWithoutAutologinThrows() async {
+    @Test func `expired Keychain session without autologin throws`() async {
         await #expect(throws: SessionExpired.self) {
             try await Session.ensureTicket([], source: .keychain, signIn: nil)
         }
     }
 
     /// A new login lands in the Keychain, but XCODECTL_SESSION would still win on the next run.
-    @Test func expiredEnvironmentSessionNeverSignsIn() async {
+    @Test func `expired environment session never signs in`() async {
         await #expect(throws: SessionExpired.self) {
             try await Session.ensureTicket([], source: .environment) {
                 Issue.record("signed in for an XCODECTL_SESSION session")

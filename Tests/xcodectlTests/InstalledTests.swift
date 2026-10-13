@@ -7,7 +7,7 @@ import Foundation
 import Testing
 
 struct InstalledTests {
-    @Test func versionInNameReadsTheLeadingDigits() {
+    @Test func `version in name reads the leading digits`() {
         #expect(Installed.versionInName(bundle("Xcode-27.0.0-release.candidate.app")) == "27.0.0")
         #expect(Installed.versionInName(bundle("Xcode-26.6.app")) == "26.6")
         #expect(Installed.versionInName(bundle("Xcode_27.0.0_Release_Candidate.app")) == "27.0.0")
@@ -15,7 +15,7 @@ struct InstalledTests {
         #expect(Installed.versionInName(bundle("Xcode-beta.app")) == nil)
     }
 
-    @Test func leftoverMatchesTheVersionInTheDirectoryName() {
+    @Test func `leftover matches the version in the directory name`() {
         let candidates = [bundle("Xcode-27.0.0-release.candidate.app")]
         #expect(Installed.leftover(matching: "27", in: candidates) == candidates[0])
         #expect(Installed.leftover(matching: "27.0", in: candidates) == candidates[0])
@@ -23,14 +23,14 @@ struct InstalledTests {
     }
 
     /// "latest" and a build number say nothing about the name, so they never match a leftover.
-    @Test func leftoverIgnoresQueriesWithoutVersionNumbers() {
+    @Test func `leftover ignores queries without version numbers`() {
         let candidates = [bundle("Xcode-27.0.0-release.candidate.app")]
         #expect(Installed.leftover(matching: "latest", in: candidates) == nil)
         #expect(Installed.leftover(matching: "27A266a", in: candidates) == nil)
     }
 
     /// Xcode hard-links thousands of files; the space they take counts once, the way `du` counts it.
-    @Test func sizeCountsAHardLinkedFileOnce() throws {
+    @Test func `size counts a hard-linked file once`() throws {
         let app = FileManager.default.temporaryDirectory.appendingPathComponent("SizeTest-\(UUID().uuidString).app")
         try FileManager.default.createDirectory(
             at: app.appendingPathComponent("Contents"),

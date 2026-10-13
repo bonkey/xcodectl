@@ -7,7 +7,7 @@ import Foundation
 import Testing
 
 struct InstalledRowsTests {
-    @Test func anXcodeRowCarriesItsSizeAndPath() {
+    @Test func `an Xcode row carries its size and path`() {
         let rows = installedRows([(app, 3_583_873_024, [])], active: nil)
         #expect(rows == [
             ["VERSION", "BUILD", "SIZE", "PATH", ""],
@@ -15,12 +15,12 @@ struct InstalledRowsTests {
         ])
     }
 
-    @Test func theActiveXcodeIsMarkedActive() {
+    @Test func `the active Xcode is marked active`() {
         let rows = installedRows([(app, 0, []), (beta, 0, [])], active: beta.path.path)
         #expect(rows.map(\.last) == ["", "", "* active"])
     }
 
-    @Test func runtimesFollowTheXcodeThatUsesThem() throws {
+    @Test func `runtimes follow the Xcode that uses them`() throws {
         let runtimes = try SimCtl.parse(makeSimctlOutput([
             ("A", "com.apple.platform.iphonesimulator", "27.0", "24A434", "Ready", 8_067_000_161, "/a.asset/AssetData"),
         ]))
@@ -29,13 +29,13 @@ struct InstalledRowsTests {
         #expect(rows[2] == ["  iOS 27.0", "24A434", "7.5 GB", "", ""])
     }
 
-    @Test func anXcodeStillBeingSizedShowsThePlaceholder() {
+    @Test func `an Xcode still being sized shows the placeholder`() {
         let rows = installedRows([(app, nil, [])], active: nil, unknownSize: "…")
         #expect(rows[1] == ["27.0", "27A266a", "…", "/Applications/Xcode-27.0.app", ""])
     }
 
     /// `--no-size` skips the Xcode bundles; runtime sizes come from simctl for free.
-    @Test func anUnsizedXcodeLeavesItsSizeEmptyButKeepsRuntimeSizes() throws {
+    @Test func `an unsized Xcode leaves its size empty but keeps runtime sizes`() throws {
         let runtimes = try SimCtl.parse(makeSimctlOutput([
             ("A", "com.apple.platform.iphonesimulator", "27.0", "24A434", "Ready", 8_067_000_161, "/a.asset/AssetData"),
         ]))

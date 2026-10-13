@@ -7,12 +7,12 @@ import Foundation
 import Testing
 
 struct CommandGrammarTests {
-    @Test func installTakesSeveralXcodes() throws {
+    @Test func `install takes several Xcodes`() throws {
         let install = try #require(XcodeCtl.parseAsRoot(["install", "27.1", "26.4"]) as? Install)
         #expect(install.versions == ["27.1", "26.4"])
     }
 
-    @Test func installXcodeWithRuntimesAndSelect() throws {
+    @Test func `install Xcode with runtimes and select`() throws {
         let install = try #require(
             XcodeCtl.parseAsRoot(["install", "27.1", "--runtimes", "ios", "--select"]) as? Install)
         #expect(install.versions == ["27.1"])
@@ -20,25 +20,25 @@ struct CommandGrammarTests {
         #expect(install.select)
     }
 
-    @Test func removeXcodeKeepingRuntimes() throws {
+    @Test func `remove Xcode keeping runtimes`() throws {
         let remove = try #require(XcodeCtl.parseAsRoot(["remove", "27.1", "--keep-runtimes"]) as? Remove)
         #expect(remove.version == "27.1")
         #expect(remove.keepRuntimes)
     }
 
-    @Test func listXcodesByRegex() throws {
+    @Test func `list Xcodes by regex`() throws {
         let list = try #require(XcodeCtl.parseAsRoot(["list", "26\\.[45]", "--beta"]) as? List)
         #expect(list.pattern == "26\\.[45]")
         #expect(list.beta)
     }
 
-    @Test func installedWithoutSizes() throws {
+    @Test func `installed without sizes`() throws {
         let installed = try #require(XcodeCtl.parseAsRoot(["installed", "--no-size"]) as? ListInstalled)
         #expect(installed.noSize)
         #expect(installed.runtimes == nil)
     }
 
-    @Test func theInformationCommandsTakeJSON() throws {
+    @Test func `the information commands take JSON`() throws {
         #expect(try (XcodeCtl.parseAsRoot(["list", "--json"]) as? List)?.json == true)
         #expect(try (XcodeCtl.parseAsRoot(["list", "ios", "--all", "--json"]) as? List)?.json == true)
         #expect(try (XcodeCtl.parseAsRoot(["installed", "--no-size", "--json"]) as? ListInstalled)?.json == true)
@@ -48,7 +48,7 @@ struct CommandGrammarTests {
 
     // MARK: - Runtimes
 
-    @Test func runtimeWordsAreRecognized() {
+    @Test func `runtime words are recognized`() {
         #expect(RuntimeTarget(argument: "ios")?.platform == .ios)
         #expect(RuntimeTarget(argument: "IOS")?.platform == .ios)
         #expect(RuntimeTarget(argument: "visionos")?.platform == .visionos)
@@ -56,13 +56,13 @@ struct CommandGrammarTests {
         #expect(RuntimeTarget(argument: "runtimes")?.platform == nil)
     }
 
-    @Test func xcodeVersionQueriesAreNotRuntimeWords() {
+    @Test func `Xcode version queries are not runtime words`() {
         for query in ["27.1", "27", "latest", "latest-beta", "27A266a", "27 rc", "27-rc1"] {
             #expect(RuntimeTarget(argument: query) == nil, "\(query)")
         }
     }
 
-    @Test func installRuntime() throws {
+    @Test func `install runtime`() throws {
         let install = try #require(XcodeCtl.parseAsRoot(["install", "ios", "26.0", "--xcode", "27"]) as? Install)
         #expect(install.versions == ["ios", "26.0"])
         #expect(install.xcode == "27")
@@ -71,14 +71,14 @@ struct CommandGrammarTests {
         #expect(!older.autologin)
     }
 
-    @Test func listRuntimes() throws {
+    @Test func `list runtimes`() throws {
         let list = try #require(XcodeCtl.parseAsRoot(["list", "ios", "--all"]) as? List)
         #expect(list.pattern == "ios")
         #expect(list.all)
         #expect(throws: Never.self) { try XcodeCtl.parseAsRoot(["list", "runtimes", "--beta"]) }
     }
 
-    @Test func installedRuntimes() throws {
+    @Test func `installed runtimes`() throws {
         let installed = try #require(XcodeCtl.parseAsRoot(["installed", "runtimes"]) as? ListInstalled)
         #expect(installed.runtimes != nil)
         #expect(installed.runtimes?.platform == nil)
@@ -86,7 +86,7 @@ struct CommandGrammarTests {
         #expect(tvos.runtimes?.platform == .tvos)
     }
 
-    @Test func removeRuntime() throws {
+    @Test func `remove runtime`() throws {
         let remove = try #require(XcodeCtl.parseAsRoot(["remove", "ios", "26.0"]) as? Remove)
         #expect(remove.version == "ios")
         #expect(remove.runtimeVersion == "26.0")
@@ -99,7 +99,7 @@ struct CommandGrammarTests {
         #expect(prune.dryRun)
     }
 
-    @Test func optionsOfTheOtherKindAreRejected() {
+    @Test func `options of the other kind are rejected`() {
         let rejected = [
             ["install", "ios", "--select"],
             ["install", "ios", "--no-approve"],
@@ -116,7 +116,7 @@ struct CommandGrammarTests {
         }
     }
 
-    @Test func malformedRuntimeTargetsAreRejected() {
+    @Test func `malformed runtime targets are rejected`() {
         let rejected = [
             ["install", "ios", "26", "27"],
             ["install", "runtimes"],
@@ -129,7 +129,7 @@ struct CommandGrammarTests {
         }
     }
 
-    @Test func theOldCommandNamesAreGone() {
+    @Test func `the old command names are gone`() {
         #expect(throws: Error.self) { try XcodeCtl.parseAsRoot(["list-installed"]) }
         #expect(throws: Error.self) { try XcodeCtl.parseAsRoot(["runtime", "list"]) }
         #expect(throws: Error.self) { try XcodeCtl.parseAsRoot(["runtime", "install", "ios"]) }

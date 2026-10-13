@@ -10,7 +10,7 @@ import Testing
 /// Serialized because `withSession` sets XCODECTL_SESSION for the whole process.
 @Suite(.serialized)
 struct AuthCommandTests {
-    @Test func authSubcommandsParse() throws {
+    @Test func `auth subcommands parse`() throws {
         #expect(try XcodeCtl.parseAsRoot(["auth", "login"]) is Login)
         #expect(try XcodeCtl.parseAsRoot(["auth", "status"]) is AuthCommand.Status)
         #expect(try XcodeCtl.parseAsRoot(["auth", "export"]) is AuthCommand.Export)
@@ -19,7 +19,7 @@ struct AuthCommandTests {
     }
 
     /// A session without Apple's login cookie fails before any request goes out.
-    @Test func statusWithJSONExitsOneWithoutAnError() async throws {
+    @Test func `status with JSON exits one without an error`() async throws {
         try await withSession("[]") {
             var status = try #require(XcodeCtl.parseAsRoot(["auth", "status", "--json"]) as? AuthCommand.Status)
             await #expect(throws: ExitCode.failure) {
@@ -28,7 +28,7 @@ struct AuthCommandTests {
         }
     }
 
-    @Test func statusWithoutJSONStillFailsWithTheExpiry() async throws {
+    @Test func `status without JSON still fails with the expiry`() async throws {
         try await withSession("[]") {
             var status = try #require(XcodeCtl.parseAsRoot(["auth", "status"]) as? AuthCommand.Status)
             let error = try await #require(throws: SessionExpired.self) {
@@ -39,7 +39,7 @@ struct AuthCommandTests {
         }
     }
 
-    @Test func theOldCommandNamesAreGone() {
+    @Test func `the old command names are gone`() {
         #expect(throws: Error.self) { try XcodeCtl.parseAsRoot(["login"]) }
         #expect(throws: Error.self) { try XcodeCtl.parseAsRoot(["session", "export"]) }
         #expect(throws: Error.self) { try XcodeCtl.parseAsRoot(["session", "import"]) }

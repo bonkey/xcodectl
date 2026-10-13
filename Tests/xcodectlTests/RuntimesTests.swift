@@ -13,7 +13,7 @@ struct RuntimesTests {
 
     /// Disk images (iOS 16 and 17) download from their own URL; installer packages (iOS 15 and
     /// older) are not read.
-    @Test func parseKeepsCryptexesAndDiskImagesButNotPackages() throws {
+    @Test func `parse keeps cryptexes and disk images but not packages`() throws {
         let runtimes = try Runtimes.parse(makeIndex([
             makeEntry(platform: "com.apple.platform.iphoneos", version: "26.5", build: "23F77"),
             makeEntry(
@@ -30,7 +30,7 @@ struct RuntimesTests {
                 "https://download.developer.apple.com/Developer_Tools/21F79/21F79.dmg")
     }
 
-    @Test func parseSkipsADiskImageWithoutASource() throws {
+    @Test func `parse skips a disk image without a source`() throws {
         var entry = makeEntry(
             platform: "com.apple.platform.iphoneos",
             version: "17.5",
@@ -40,7 +40,7 @@ struct RuntimesTests {
         #expect(try Runtimes.parse(makeIndex([entry])).isEmpty)
     }
 
-    @Test func parseReadsEveryPlatform() throws {
+    @Test func `parse reads every platform`() throws {
         let runtimes = try Runtimes.parse(makeIndex([
             makeEntry(platform: "com.apple.platform.iphoneos", version: "26.0", build: "23A1"),
             makeEntry(platform: "com.apple.platform.appletvos", version: "26.0", build: "23J1"),
@@ -50,7 +50,7 @@ struct RuntimesTests {
         #expect(Set(runtimes.map(\.platform)) == Set(RuntimePlatform.allCases))
     }
 
-    @Test func parseSkipsAnUnknownPlatform() throws {
+    @Test func `parse skips an unknown platform`() throws {
         let runtimes = try Runtimes.parse(makeIndex([
             makeEntry(platform: "com.apple.platform.macosx", version: "26.0", build: "23X1"),
         ]))
@@ -61,7 +61,7 @@ struct RuntimesTests {
 
     /// Apple publishes many builds twice, arm64-only and universal. This tool is Apple Silicon only,
     /// so the arm64-only artifact wins and the row appears once.
-    @Test func forThisMacPrefersTheAppleSiliconArtifactOverTheUniversalOne() throws {
+    @Test func `for this Mac prefers the Apple silicon artifact over the universal one`() throws {
         let runtimes = try Runtimes.parse(makeIndex([
             makeEntry(
                 platform: "com.apple.platform.iphoneos",
@@ -78,7 +78,7 @@ struct RuntimesTests {
         #expect(runtimes[0].architectures == ["arm64"])
     }
 
-    @Test func forThisMacKeepsTheUniversalArtifactWhenNoAppleSiliconOneExists() throws {
+    @Test func `for this Mac keeps the universal artifact when no Apple silicon one exists`() throws {
         let runtimes = try Runtimes.parse(makeIndex([
             makeEntry(
                 platform: "com.apple.platform.iphoneos",
@@ -90,7 +90,7 @@ struct RuntimesTests {
         #expect(!runtimes[0].isAppleSiliconOnly)
     }
 
-    @Test func differentBuildsOfOneVersionBothSurvive() throws {
+    @Test func `different builds of one version both survive`() throws {
         let runtimes = try Runtimes.parse(makeIndex([
             makeEntry(platform: "com.apple.platform.appletvos", version: "27.0", build: "24J360"),
             makeEntry(
@@ -104,7 +104,7 @@ struct RuntimesTests {
 
     // MARK: - Listing
 
-    @Test func defaultListingKeepsTheNewestMajorOfEachPlatform() throws {
+    @Test func `default listing keeps the newest major of each platform`() throws {
         let runtimes = try Runtimes.parse(makeIndex([
             makeEntry(platform: "com.apple.platform.iphoneos", version: "27.0", build: "24A1"),
             makeEntry(platform: "com.apple.platform.iphoneos", version: "26.5", build: "23F1"),
@@ -113,7 +113,7 @@ struct RuntimesTests {
         #expect(Runtimes.defaultListing(runtimes).map(\.build) == ["24A1", "23J1"])
     }
 
-    @Test func defaultListingNarrowsToOnePlatform() throws {
+    @Test func `default listing narrows to one platform`() throws {
         let runtimes = try Runtimes.parse(makeIndex([
             makeEntry(platform: "com.apple.platform.iphoneos", version: "27.0", build: "24A1"),
             makeEntry(platform: "com.apple.platform.appletvos", version: "27.0", build: "24J1"),
@@ -123,7 +123,7 @@ struct RuntimesTests {
 
     /// A beta newer than the newest release shows, so a running beta cycle is visible; a beta of a
     /// version that already shipped does not.
-    @Test func currentListingKeepsBetasNewerThanTheNewestRelease() throws {
+    @Test func `current listing keeps betas newer than the newest release`() throws {
         let runtimes = try Runtimes.parse(makeIndex([
             makeEntry(
                 platform: "com.apple.platform.iphoneos",
@@ -140,7 +140,7 @@ struct RuntimesTests {
         #expect(Runtimes.defaultListing(runtimes).map(\.build) == ["24B1", "24A1"])
     }
 
-    @Test func stableListingDropsEveryBeta() throws {
+    @Test func `stable listing drops every beta`() throws {
         let runtimes = try Runtimes.parse(makeIndex([
             makeEntry(
                 platform: "com.apple.platform.iphoneos",
@@ -154,23 +154,23 @@ struct RuntimesTests {
 
     // MARK: - Resolution
 
-    @Test func resolveMatchesABuildExactly() throws {
+    @Test func `resolve matches a build exactly`() throws {
         let runtimes = try makeCatalog()
         #expect(try Runtimes.resolve("24A1", platform: .ios, in: runtimes).build == "24A1")
     }
 
     /// A version is not unique: a release and its beta share one. The release wins.
-    @Test func resolvePrefersTheReleaseOverABetaOfTheSameVersion() throws {
+    @Test func `resolve prefers the release over a beta of the same version`() throws {
         let runtimes = try makeCatalog()
         #expect(try Runtimes.resolve("27.0", platform: .ios, in: runtimes).build == "24A1")
     }
 
-    @Test func resolveMatchesAVersionPrefix() throws {
+    @Test func `resolve matches a version prefix`() throws {
         let runtimes = try makeCatalog()
         #expect(try Runtimes.resolve("27", platform: .ios, in: runtimes).build == "24A1")
     }
 
-    @Test func resolveTakesTheNewestReleaseOfAnOlderMajor() throws {
+    @Test func `resolve takes the newest release of an older major`() throws {
         let runtimes = try Runtimes.parse(makeIndex([
             makeEntry(platform: "com.apple.platform.iphoneos", version: "18.0", build: "22A3351"),
             makeEntry(
@@ -194,12 +194,12 @@ struct RuntimesTests {
         #expect(try Runtimes.resolve("17.4", platform: .ios, in: runtimes).build == "21E213")
     }
 
-    @Test func resolveStaysWithinItsPlatform() throws {
+    @Test func `resolve stays within its platform`() throws {
         let runtimes = try makeCatalog()
         #expect(throws: Error.self) { try Runtimes.resolve("24A1", platform: .tvos, in: runtimes) }
     }
 
-    @Test func resolveRejectsAnUnknownVersion() throws {
+    @Test func `resolve rejects an unknown version`() throws {
         let runtimes = try makeCatalog()
         let error = try #require(throws: Error.self) {
             try Runtimes.resolve("99.0", platform: .ios, in: runtimes)
@@ -210,7 +210,7 @@ struct RuntimesTests {
     // MARK: - Host requirements
 
     /// Some prereleases pin themselves to one exact Xcode.
-    @Test func runtimePinnedToOneXcodeRejectsEveryOther() throws {
+    @Test func `runtime pinned to one Xcode rejects every other`() throws {
         let runtimes = try Runtimes.parse(makeIndex([
             makeEntry(
                 platform: "com.apple.platform.iphoneos",
@@ -224,7 +224,7 @@ struct RuntimesTests {
         #expect(!runtimes[0].runs(onXcode: "27.2"))
     }
 
-    @Test func runtimeWithoutRequirementsRunsAnywhere() throws {
+    @Test func `runtime without requirements runs anywhere`() throws {
         let runtimes = try makeCatalog()
         #expect(runtimes[0].runs(onXcode: "16.1"))
     }
@@ -233,20 +233,20 @@ struct RuntimesTests {
 
     /// Xcode 27 refuses a cryptex the index lists without architectures, which is every one before
     /// iOS 26, so this tool installs those itself.
-    @Test func cryptexWithoutArchitecturesInstallsFromTheAssetServerThroughXcode27AndNewer() throws {
+    @Test func `cryptex without architectures installs from the asset server through Xcode 27 and newer`() throws {
         let runtime = try makeCryptexWithoutArchitectures()
         #expect(runtime.installsFromAssetServer(onXcode: "27.0"))
         #expect(runtime.installsFromAssetServer(onXcode: "27.2"))
         #expect(runtime.installsFromAssetServer(onXcode: "28.0"))
     }
 
-    @Test func xcode26InstallsACryptexWithoutArchitecturesThroughXcodebuild() throws {
+    @Test func `Xcode 26 installs a cryptex without architectures through xcodebuild`() throws {
         let runtime = try makeCryptexWithoutArchitectures()
         #expect(!runtime.installsFromAssetServer(onXcode: "26.4"))
         #expect(!runtime.installsFromAssetServer(onXcode: "26.4.1"))
     }
 
-    @Test func cryptexWithArchitecturesInstallsThroughXcodebuild() throws {
+    @Test func `cryptex with architectures installs through xcodebuild`() throws {
         let runtimes = try Runtimes.parse(makeIndex([
             makeEntry(platform: "com.apple.platform.iphoneos", version: "26.0", build: "23A339"),
             makeEntry(
@@ -261,7 +261,7 @@ struct RuntimesTests {
         }
     }
 
-    @Test func diskImageNeverInstallsFromTheAssetServer() throws {
+    @Test func `disk image never installs from the asset server`() throws {
         var entry = makeEntry(
             platform: "com.apple.platform.iphoneos",
             version: "17.5",
@@ -274,7 +274,7 @@ struct RuntimesTests {
 
     // MARK: - Size estimate
 
-    @Test func estimatedSizeSumsTheNewestReleaseOfEachPlatform() throws {
+    @Test func `estimated size sums the newest release of each platform`() throws {
         let runtimes = try Runtimes.parse(makeIndex([
             makeEntry(platform: "com.apple.platform.iphoneos", version: "27.0", build: "24A1", size: 8_000_000_000),
             makeEntry(platform: "com.apple.platform.appletvos", version: "27.0", build: "24J1", size: 3_000_000_000),
@@ -283,7 +283,7 @@ struct RuntimesTests {
         #expect(Runtimes.estimatedSize([.ios], in: runtimes) == 8_000_000_000)
     }
 
-    @Test func estimatedSizeIgnoresBetas() throws {
+    @Test func `estimated size ignores betas`() throws {
         let runtimes = try Runtimes.parse(makeIndex([
             makeEntry(
                 platform: "com.apple.platform.iphoneos",
@@ -307,7 +307,7 @@ struct RuntimesTests {
 // MARK: - SimCtlTests
 
 struct SimCtlTests {
-    @Test func parseReadsEveryRegistration() throws {
+    @Test func `parse reads every registration`() throws {
         let runtimes = try SimCtl.parse(makeSimctlOutput([
             (
                 "4AA57150",
@@ -326,7 +326,7 @@ struct SimCtlTests {
     }
 
     /// The leftovers that hold disk space are exactly the ones `simctl runtime list` will not print.
-    @Test func parseKeepsUnusableRegistrations() throws {
+    @Test func `parse keeps unusable registrations`() throws {
         let runtimes = try SimCtl.parse(makeSimctlOutput([
             (
                 "471299F8",
@@ -342,7 +342,7 @@ struct SimCtlTests {
         #expect(runtimes[0].state == "Unusable")
     }
 
-    @Test func assetDirectoryIsTheAssetBundleHoldingTheSpace() throws {
+    @Test func `asset directory is the asset bundle holding the space`() throws {
         let runtimes = try SimCtl.parse(makeSimctlOutput([
             (
                 "A",
@@ -359,7 +359,7 @@ struct SimCtlTests {
     }
 
     /// A runtime installed from a plain disk image has no MobileAsset behind it.
-    @Test func assetDirectoryIsNilForADiskImageRuntime() throws {
+    @Test func `asset directory is nil for a disk image runtime`() throws {
         let runtimes = try SimCtl.parse(makeSimctlOutput([
             (
                 "A",
@@ -373,7 +373,7 @@ struct SimCtlTests {
         #expect(runtimes[0].assetDirectory == nil)
     }
 
-    @Test func parseRejectsOutputThatIsNotJSON() {
+    @Test func `parse rejects output that is not JSON`() {
         #expect(throws: Error.self) { try SimCtl.parse(Data("not json".utf8)) }
     }
 }
@@ -381,7 +381,7 @@ struct SimCtlTests {
 // MARK: - RuntimeInstallerTests
 
 struct RuntimeInstallerTests {
-    @Test func progressFractionReadsAPercentage() {
+    @Test func `progress fraction reads a percentage`() {
         #expect(
             RuntimeInstaller.progressFraction("Downloading tvOS 26.0 Simulator: 41.5 % (1.4 GB of 3.5 GB)") ==
                 0.415)
@@ -389,33 +389,33 @@ struct RuntimeInstallerTests {
 
     /// xcodebuild prints progress in the host locale, so the separator can be a comma. The tool forces
     /// the C locale, but a stray comma must not read as 0.
-    @Test func progressFractionAcceptsADecimalComma() {
+    @Test func `progress fraction accepts a decimal comma`() {
         #expect(RuntimeInstaller.progressFraction("Downloading: 41,5 % (1,4 GB of 3,5 GB)") == 0.415)
     }
 
-    @Test func progressFractionIgnoresLinesWithoutAPercentage() {
+    @Test func `progress fraction ignores lines without a percentage`() {
         #expect(RuntimeInstaller.progressFraction("Downloading tvOS 26.0 Simulator: Installing...") == nil)
         #expect(RuntimeInstaller.progressFraction("Finding content...") == nil)
     }
 
-    @Test func progressFractionClampsToOne() {
+    @Test func `progress fraction clamps to one`() {
         #expect(RuntimeInstaller.progressFraction("100 %") == 1)
     }
 
-    @Test func alreadyInstalledRecognisesADuplicateImage() {
+    @Test func `already installed recognises a duplicate image`() {
         #expect(RuntimeInstaller.isAlreadyInstalled(
             "Error Domain=SimDiskImageErrorDomain Code=9 \"Duplicate of image at /Library/...\""))
         #expect(!RuntimeInstaller.isAlreadyInstalled("Error Domain=NSPOSIXErrorDomain Code=22"))
     }
 
-    @Test func alreadyInstalledRecognisesAnAlreadyDownloadedRuntime() {
+    @Test func `already installed recognises an already downloaded runtime`() {
         #expect(RuntimeInstaller.isAlreadyInstalled(
             "Finding content...\niOS 24B5084k (arm64Only) is already downloaded."))
         #expect(!RuntimeInstaller.isAlreadyInstalled("Finding content...\nDownloading iOS 27.2: 41.5 %"))
     }
 
     /// Without a build, xcodebuild finds nothing left to download for the runtime its Xcode uses.
-    @Test func alreadyInstalledRecognisesNoNeededDownloadables() {
+    @Test func `already installed recognises no needed downloadables`() {
         #expect(RuntimeInstaller.isAlreadyInstalled(
             "Finding content...\nNo needed downloadables found for arm64Only"))
     }
@@ -424,23 +424,23 @@ struct RuntimeInstallerTests {
 // MARK: - RuntimeSelectionTests
 
 struct RuntimeSelectionTests {
-    @Test func allSelectsEveryPlatformInOneRun() {
+    @Test func `all selects every platform in one run`() {
         let selection = RuntimeSelection(argument: "all")
         #expect(selection?.platforms == RuntimePlatform.allCases)
         #expect(selection?.isAll == true)
     }
 
-    @Test func commaListSelectsThosePlatforms() {
+    @Test func `comma list selects those platforms`() {
         let selection = RuntimeSelection(argument: "ios,watchos")
         #expect(selection?.platforms == [.ios, .watchos])
         #expect(selection?.isAll == false)
     }
 
-    @Test func commaListIgnoresCaseSpacingAndRepeats() {
+    @Test func `comma list ignores case, spacing and repeats`() {
         #expect(RuntimeSelection(argument: " iOS , watchOS , ios ")?.platforms == [.ios, .watchos])
     }
 
-    @Test func unknownPlatformIsRejected() {
+    @Test func `unknown platform is rejected`() {
         #expect(RuntimeSelection(argument: "ios,android") == nil)
         #expect(RuntimeSelection(argument: "") == nil)
     }
@@ -451,7 +451,7 @@ struct RuntimeSelectionTests {
 struct RuntimeMatchTests {
     /// `simctl runtime match list -j` for Xcode 27.0 with only iOS installed: iOS resolves to a newer
     /// runtime build than its SDK, the others to their SDK build although nothing is installed.
-    @Test func parseMatchesReadsTheChosenRuntimeOfEverySDK() throws {
+    @Test func `parse matches reads the chosen runtime of every SDK`() throws {
         let output = """
         {
           "appletvos27.0" : {"chosenRuntimeBuild" : "24J360", "defaultBuild" : "24J360", "sdkBuild" : "24J360"},
@@ -462,24 +462,24 @@ struct RuntimeMatchTests {
         #expect(try SimCtl.parseMatches(Data(output.utf8)) == ["24j360", "24a434", "24r360"])
     }
 
-    @Test func parseMatchesRejectsOutputThatIsNotJSON() {
+    @Test func `parse matches rejects output that is not JSON`() {
         #expect(throws: Error.self) { try SimCtl.parseMatches(Data("not json".utf8)) }
     }
 
     /// A chosen build with no registration behind it is a platform without a runtime installed.
-    @Test func usedTakesTheInstalledRuntimesWithAChosenBuild() throws {
+    @Test func `used takes the installed runtimes with a chosen build`() throws {
         let used = try Runtimes.used(by: ["24a434", "24r360"], in: installed())
         #expect(used.map(\.build) == ["24A434"])
     }
 
-    @Test func usedSkipsRegistrationsThatAreNotReady() throws {
+    @Test func `used skips registrations that are not ready`() throws {
         let installed = try SimCtl.parse(makeSimctlOutput([
             ("A", "com.apple.platform.iphonesimulator", "27.0", "24A434", "Unusable", 1, "/x.asset/AssetData"),
         ]))
         #expect(Runtimes.used(by: ["24a434"], in: installed) == [])
     }
 
-    @Test func exclusiveKeepsWhatAnotherXcodeUses() throws {
+    @Test func `exclusive keeps what another Xcode uses`() throws {
         let exclusive = try Runtimes.exclusive(
             to: ["24a434", "24j360"],
             others: [["24a94401", "24j360"]],
@@ -487,7 +487,7 @@ struct RuntimeMatchTests {
         #expect(exclusive.map(\.build) == ["24A434"])
     }
 
-    @Test func exclusiveWithoutOtherXcodesIsEverythingUsed() throws {
+    @Test func `exclusive without other Xcodes is everything used`() throws {
         let exclusive = try Runtimes.exclusive(to: ["24a434", "24j360"], others: [], in: installed())
         #expect(exclusive.map(\.build) == ["24A434", "24J360"])
     }
