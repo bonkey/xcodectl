@@ -3,28 +3,29 @@
 //
 
 @testable import xcodectl
-import XCTest
+import Foundation
+import Testing
 
-final class ReleaseRowsTests: XCTestCase {
-    func testOneInstalledAppFillsOneRow() {
+struct ReleaseRowsTests {
+    @Test func oneInstalledAppFillsOneRow() {
         let rows = releaseRows([finalRelease, candidate], installed: [app], active: nil)
-        XCTAssertEqual(rows.map(\.last), ["STATUS", "installed", ""])
+        #expect(rows.map(\.last) == ["STATUS", "installed", ""])
     }
 
-    func testTheActiveAppIsMarkedActive() {
+    @Test func theActiveAppIsMarkedActive() {
         let rows = releaseRows([finalRelease, candidate], installed: [app], active: app.path.path)
-        XCTAssertEqual(rows.map(\.last), ["STATUS", "* active", ""])
+        #expect(rows.map(\.last) == ["STATUS", "* active", ""])
     }
 
-    func testNothingInstalledLeavesEveryStatusEmpty() {
+    @Test func nothingInstalledLeavesEveryStatusEmpty() {
         let rows = releaseRows([finalRelease, candidate], installed: [], active: nil)
-        XCTAssertEqual(rows.map(\.last), ["STATUS", "", ""])
+        #expect(rows.map(\.last) == ["STATUS", "", ""])
     }
 
-    func testARowWithoutAMatchingBuildStaysEmpty() {
+    @Test func aRowWithoutAMatchingBuildStaysEmpty() {
         let older = makeRelease("26.6", "26F71", (2026, 8, 12))
         let rows = releaseRows([finalRelease, older], installed: [app], active: nil)
-        XCTAssertEqual(rows.map(\.last), ["STATUS", "installed", ""])
+        #expect(rows.map(\.last) == ["STATUS", "installed", ""])
     }
 
     /// A release candidate and its final release carry the same build.

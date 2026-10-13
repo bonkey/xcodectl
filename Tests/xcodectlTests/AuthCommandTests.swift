@@ -4,48 +4,45 @@
 
 @testable import xcodectl
 import ArgumentParser
-import XCTest
+import Foundation
+import Testing
 
-final class AuthCommandTests: XCTestCase {
-    func testAuthSubcommandsParse() throws {
-        XCTAssertTrue(try XcodeCtl.parseAsRoot(["auth", "login"]) is Login)
-        XCTAssertTrue(try XcodeCtl.parseAsRoot(["auth", "status"]) is AuthCommand.Status)
-        XCTAssertTrue(try XcodeCtl.parseAsRoot(["auth", "export"]) is AuthCommand.Export)
-        XCTAssertTrue(try XcodeCtl.parseAsRoot(["auth", "import"]) is AuthCommand.Import)
-        XCTAssertTrue(try XcodeCtl.parseAsRoot(["auth", "logout"]) is AuthCommand.Logout)
+/// Serialized because `withSession` sets XCODECTL_SESSION for the whole process.
+@Suite(.serialized)
+struct AuthCommandTests {
+    @Test func authSubcommandsParse() throws {
+        #expect(try XcodeCtl.parseAsRoot(["auth", "login"]) is Login)
+        #expect(try XcodeCtl.parseAsRoot(["auth", "status"]) is AuthCommand.Status)
+        #expect(try XcodeCtl.parseAsRoot(["auth", "export"]) is AuthCommand.Export)
+        #expect(try XcodeCtl.parseAsRoot(["auth", "import"]) is AuthCommand.Import)
+        #expect(try XcodeCtl.parseAsRoot(["auth", "logout"]) is AuthCommand.Logout)
     }
 
     /// A session without Apple's login cookie fails before any request goes out.
-    func testStatusWithJSONExitsOneWithoutAnError() async throws {
+    @Test func statusWithJSONExitsOneWithoutAnError() async throws {
         try await withSession("[]") {
-            var status = try XCTUnwrap(XcodeCtl.parseAsRoot(["auth", "status", "--json"]) as? AuthCommand.Status)
-            do {
+            var status = try #require(XcodeCtl.parseAsRoot(["auth", "status", "--json"]) as? AuthCommand.Status)
+            await #expect(throws: ExitCode.failure) {
                 try await status.run()
-                XCTFail("expected exit 1")
-            } catch {
-                XCTAssertEqual(error as? ExitCode, .failure, "\(error)")
             }
         }
     }
 
-    func testStatusWithoutJSONStillFailsWithTheExpiry() async throws {
+    @Test func statusWithoutJSONStillFailsWithTheExpiry() async throws {
         try await withSession("[]") {
-            var status = try XCTUnwrap(XcodeCtl.parseAsRoot(["auth", "status"]) as? AuthCommand.Status)
-            do {
+            var status = try #require(XcodeCtl.parseAsRoot(["auth", "status"]) as? AuthCommand.Status)
+            let error = try await #require(throws: SessionExpired.self) {
                 try await status.run()
-                XCTFail("expected SessionExpired")
-            } catch {
-                XCTAssertTrue(error is SessionExpired, "\(error)")
-                // The missing login cookie's message, not Apple's: the session came from the environment.
-                XCTAssertTrue("\(error)".contains("auth export"), "\(error)")
             }
+            // The missing login cookie's message, not Apple's: the session came from the environment.
+            #expect("\(error)".contains("auth export"), "\(error)")
         }
     }
 
-    func testTheOldCommandNamesAreGone() {
-        XCTAssertThrowsError(try XcodeCtl.parseAsRoot(["login"]))
-        XCTAssertThrowsError(try XcodeCtl.parseAsRoot(["session", "export"]))
-        XCTAssertThrowsError(try XcodeCtl.parseAsRoot(["session", "import"]))
+    @Test func theOldCommandNamesAreGone() {
+        #expect(throws: Error.self) { try XcodeCtl.parseAsRoot(["login"]) }
+        #expect(throws: Error.self) { try XcodeCtl.parseAsRoot(["session", "export"]) }
+        #expect(throws: Error.self) { try XcodeCtl.parseAsRoot(["session", "import"]) }
     }
 
     /// Runs `body` with `cookies` (JSON) as the XCODECTL_SESSION session, then restores the variable.

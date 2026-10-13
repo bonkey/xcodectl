@@ -35,3 +35,4 @@
 --enable wrapEnumCases
 --enable wrapMultilineConditionalAssignment
 --enable wrapSwitchCases
+--enable preferSwiftTesting

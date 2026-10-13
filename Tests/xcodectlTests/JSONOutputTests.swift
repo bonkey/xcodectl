@@ -3,66 +3,67 @@
 //
 
 @testable import xcodectl
-import XCTest
+import Foundation
+import Testing
 
 // MARK: - JSONOutputTests
 
 /// The keys of `--json` are a contract for scripts and agents; the golden strings pin them.
-final class JSONOutputTests: XCTestCase {
+struct JSONOutputTests {
     // MARK: - list
 
-    func testOnlyTheFinalOfASharedBuildIsInstalled() {
+    @Test func onlyTheFinalOfASharedBuildIsInstalled() {
         let listed = entries([finalRelease, candidate], installed: [app], active: nil)
-        XCTAssertEqual(listed.map(\.installed), [true, false])
-        XCTAssertEqual(listed.map(\.active), [false, false])
+        #expect(listed.map(\.installed) == [true, false])
+        #expect(listed.map(\.active) == [false, false])
     }
 
-    func testTheActiveAppIsMarkedActive() {
+    @Test func theActiveAppIsMarkedActive() {
         let listed = entries([finalRelease, candidate], installed: [app], active: app.path.path)
-        XCTAssertEqual(listed.map(\.active), [true, false])
+        #expect(listed.map(\.active) == [true, false])
     }
 
-    func testAPrereleaseIsMarked() {
-        XCTAssertEqual(entries([finalRelease, candidate], installed: [], active: nil).map(\.prerelease), [false, true])
+    @Test func aPrereleaseIsMarked() {
+        #expect(entries([finalRelease, candidate], installed: [], active: nil).map(\.prerelease) == [false, true])
     }
 
-    func testWithoutAMinimumMacOSTheKeyIsLeftOut() {
-        XCTAssertNil(entries([finalRelease], installed: [], active: nil)[0].macOS)
+    @Test func withoutAMinimumMacOSTheKeyIsLeftOut() {
+        #expect(entries([finalRelease], installed: [], active: nil)[0].macOS == nil)
     }
 
-    func testAMacOSOlderThanTheMinimumDoesNotRunIt() {
+    @Test func aMacOSOlderThanTheMinimumDoesNotRunIt() {
         let release = makeRelease("27.0", "27A266a", (2026, 9, 14), requires: "26.6")
-        XCTAssertEqual(
-            entries([release], installed: [], active: nil, macOS: "26.4")[0].macOS,
-            .init(minimum: "26.6", newest: nil, runsHere: false))
+        #expect(
+            entries([release], installed: [], active: nil, macOS: "26.4")[0].macOS ==
+                .init(minimum: "26.6", newest: nil, runsHere: false))
     }
 
-    func testAMacOSNewerThanTheNewestSupportedDoesNotRunIt() {
+    @Test func aMacOSNewerThanTheNewestSupportedDoesNotRunIt() {
         let release = makeRelease("26.4", "17E192", (2026, 3, 24), requires: "26.2")
         let requirements = [SystemRequirements.Row(xcode: "26.4", newestMacOS: "26.x")]
-        XCTAssertEqual(
-            entries([release], installed: [], active: nil, requirements: requirements)[0].macOS,
-            .init(minimum: "26.2", newest: "26.x", runsHere: false))
+        #expect(
+            entries([release], installed: [], active: nil, requirements: requirements)[0].macOS ==
+                .init(minimum: "26.2", newest: "26.x", runsHere: false))
     }
 
-    func testASupportedMacOSRunsIt() {
+    @Test func aSupportedMacOSRunsIt() {
         let release = makeRelease("27.0", "27A266a", (2026, 9, 14), requires: "26.6")
-        XCTAssertEqual(
-            entries([release], installed: [], active: nil, requirements: unbounded)[0].macOS,
-            .init(minimum: "26.6", newest: nil, runsHere: true))
+        #expect(
+            entries([release], installed: [], active: nil, requirements: unbounded)[0].macOS ==
+                .init(minimum: "26.6", newest: nil, runsHere: true))
     }
 
-    func testWithoutAnAppleRowWhetherItRunsIsUnknown() {
+    @Test func withoutAnAppleRowWhetherItRunsIsUnknown() {
         let release = makeRelease("27.0", "27A266a", (2026, 9, 14), requires: "26.6")
-        XCTAssertEqual(
-            entries([release], installed: [], active: nil)[0].macOS,
-            .init(minimum: "26.6", newest: nil, runsHere: nil))
+        #expect(
+            entries([release], installed: [], active: nil)[0].macOS ==
+                .init(minimum: "26.6", newest: nil, runsHere: nil))
     }
 
-    func testAReleaseEncodes() throws {
+    @Test func aReleaseEncodes() throws {
         let release = makeRelease("27.0", "27A266a", (2026, 9, 14), requires: "26.6")
         let listed = entries([release], installed: [app], active: app.path.path, requirements: unbounded)
-        XCTAssertEqual(try encodeJSON(listed), """
+        #expect(try encodeJSON(listed) == """
         [
           {
             "active" : true,
@@ -82,35 +83,35 @@ final class JSONOutputTests: XCTestCase {
 
     // MARK: - list <platform>
 
-    func testACatalogRuntimeIsInstalledWhenAReadyRegistrationHasItsBuild() throws {
+    @Test func aCatalogRuntimeIsInstalledWhenAReadyRegistrationHasItsBuild() throws {
         let installed = try SimCtl.parse(makeSimctlOutput([
             ("A", "com.apple.platform.iphonesimulator", "27.0", "24A1", "Ready", 1, "/a.asset/AssetData"),
             ("B", "com.apple.platform.appletvsimulator", "27.0", "24J1", "Unusable", 1, "/b.asset/AssetData"),
         ]))
         let entries = try runtimeJSON(makeCatalog(), installed: installed)
-        XCTAssertEqual(entries.first { $0.build == "24A1" }?.installed, true)
-        XCTAssertEqual(entries.first { $0.build == "24J1" }?.installed, false)
+        #expect(entries.first { $0.build == "24A1" }?.installed == true)
+        #expect(entries.first { $0.build == "24J1" }?.installed == false)
     }
 
-    func testTheBetaRuntimeIsAPrerelease() throws {
+    @Test func theBetaRuntimeIsAPrerelease() throws {
         let entries = try runtimeJSON(makeCatalog(), installed: [])
-        XCTAssertEqual(entries.first { $0.build == "24A51" }?.prerelease, true)
-        XCTAssertEqual(entries.first { $0.build == "24A51" }?.version, "27.0")
-        XCTAssertEqual(entries.first { $0.build == "24A1" }?.prerelease, false)
+        #expect(entries.first { $0.build == "24A51" }?.prerelease == true)
+        #expect(entries.first { $0.build == "24A51" }?.version == "27.0")
+        #expect(entries.first { $0.build == "24A1" }?.prerelease == false)
     }
 
-    func testARuntimeWithoutASizeLeavesItOut() throws {
+    @Test func aRuntimeWithoutASizeLeavesItOut() throws {
         let catalog = try Runtimes.parse(makeIndex([
             makeEntry(platform: "com.apple.platform.iphoneos", version: "27.0", build: "24A1", size: 0),
         ]))
-        XCTAssertNil(runtimeJSON(catalog, installed: [])[0].size)
+        #expect(runtimeJSON(catalog, installed: [])[0].size == nil)
     }
 
-    func testARuntimeEncodes() throws {
+    @Test func aRuntimeEncodes() throws {
         let catalog = try Runtimes.parse(makeIndex([
             makeEntry(platform: "com.apple.platform.iphoneos", version: "27.0", build: "24A1"),
         ]))
-        XCTAssertEqual(try encodeJSON(runtimeJSON(catalog, installed: [])), """
+        #expect(try encodeJSON(runtimeJSON(catalog, installed: [])) == """
         [
           {
             "build" : "24A1",
@@ -126,18 +127,18 @@ final class JSONOutputTests: XCTestCase {
 
     // MARK: - installed
 
-    func testAnUnsizedXcodeLeavesItsSizeOut() {
-        XCTAssertNil(installedJSON([(app, nil, [])], active: nil)[0].size)
+    @Test func anUnsizedXcodeLeavesItsSizeOut() {
+        #expect(installedJSON([(app, nil, [])], active: nil)[0].size == nil)
     }
 
-    func testTheActiveXcodeIsMarkedActive() {
+    @Test func theActiveXcodeIsMarkedActive() {
         let entries = installedJSON([(app, 0, []), (beta, 0, [])], active: beta.path.path)
-        XCTAssertEqual(entries.map(\.active), [false, true])
+        #expect(entries.map(\.active) == [false, true])
     }
 
-    func testAnInstalledXcodeEncodesWithTheRuntimesItUses() throws {
+    @Test func anInstalledXcodeEncodesWithTheRuntimesItUses() throws {
         let entries = try installedJSON([(app, 3_583_873_024, registrations())], active: app.path.path)
-        XCTAssertEqual(try encodeJSON(entries), """
+        #expect(try encodeJSON(entries) == """
         [
           {
             "active" : true,
@@ -160,8 +161,8 @@ final class JSONOutputTests: XCTestCase {
 
     // MARK: - installed runtimes
 
-    func testARegistrationEncodesWithItsStateAndIdentifier() throws {
-        XCTAssertEqual(try encodeJSON(registrationJSON(registrations())), """
+    @Test func aRegistrationEncodesWithItsStateAndIdentifier() throws {
+        #expect(try encodeJSON(registrationJSON(registrations())) == """
         [
           {
             "build" : "24A434",
@@ -175,17 +176,17 @@ final class JSONOutputTests: XCTestCase {
         """)
     }
 
-    func testARegistrationOfAnUnknownPlatformLeavesItOut() throws {
+    @Test func aRegistrationOfAnUnknownPlatformLeavesItOut() throws {
         let runtimes = try SimCtl.parse(makeSimctlOutput([
             ("A", "com.apple.platform.unknown", "1.0", "1A1", "Unusable", 0, "/a.dmg"),
         ]))
-        XCTAssertNil(registrationJSON(runtimes)[0].platform)
+        #expect(registrationJSON(runtimes)[0].platform == nil)
     }
 
     // MARK: - auth status
 
-    func testASignedInSessionEncodesItsSource() throws {
-        XCTAssertEqual(try encodeJSON(SessionJSON(signedIn: true, source: "keychain")), """
+    @Test func aSignedInSessionEncodesItsSource() throws {
+        #expect(try encodeJSON(SessionJSON(signedIn: true, source: "keychain")) == """
         {
           "signedIn" : true,
           "source" : "keychain"
@@ -193,8 +194,8 @@ final class JSONOutputTests: XCTestCase {
         """)
     }
 
-    func testASignedOutSessionEncodesTheReason() throws {
-        XCTAssertEqual(try encodeJSON(SessionJSON(signedIn: false, reason: "not signed in")), """
+    @Test func aSignedOutSessionEncodesTheReason() throws {
+        #expect(try encodeJSON(SessionJSON(signedIn: false, reason: "not signed in")) == """
         {
           "reason" : "not signed in",
           "signedIn" : false

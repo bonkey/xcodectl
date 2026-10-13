@@ -4,57 +4,57 @@
 
 @testable import xcodectl
 import Foundation
-import XCTest
+import Testing
 
-final class InstallerTests: XCTestCase {
-    override func setUpWithError() throws {
+final class InstallerTests {
+    init() throws {
         root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
     }
 
-    override func tearDownWithError() throws {
+    deinit {
         try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: locked.path)
-        try FileManager.default.removeItem(at: root)
+        try? FileManager.default.removeItem(at: root)
     }
 
-    func testExpandDirectoryPrefersTheFirstRoot() throws {
+    @Test func expandDirectoryPrefersTheFirstRoot() throws {
         let first = root.appendingPathComponent("first/tmp")
         let second = root.appendingPathComponent("second/tmp")
-        XCTAssertEqual(
-            try Installer.expandDirectory(for: "27A1", in: [first, second]).path,
-            first.appendingPathComponent("27A1").path)
-        XCTAssertFalse(FileManager.default.fileExists(atPath: second.path))
+        #expect(
+            try Installer.expandDirectory(for: "27A1", in: [first, second]).path ==
+                first.appendingPathComponent("27A1").path)
+        #expect(!FileManager.default.fileExists(atPath: second.path))
     }
 
-    func testExpandDirectoryEmptiesWhatAnEarlierRunOfTheSameBuildLeft() throws {
+    @Test func expandDirectoryEmptiesWhatAnEarlierRunOfTheSameBuildLeft() throws {
         let tmp = root.appendingPathComponent("tmp")
         let dir = tmp.appendingPathComponent("27A1")
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         try Data().write(to: dir.appendingPathComponent("stale"))
-        XCTAssertEqual(try Installer.expandDirectory(for: "27A1", in: [tmp]).path, dir.path)
-        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: dir.path), [])
+        #expect(try Installer.expandDirectory(for: "27A1", in: [tmp]).path == dir.path)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: dir.path) == [])
     }
 
-    func testExpandDirectoryKeepsAnExpansionAnEarlierRunFinished() throws {
+    @Test func expandDirectoryKeepsAnExpansionAnEarlierRunFinished() throws {
         let tmp = root.appendingPathComponent("tmp")
         let dir = tmp.appendingPathComponent("27A1")
         try FileManager.default.createDirectory(
             at: dir.appendingPathComponent("Xcode.app"),
             withIntermediateDirectories: true)
         try Data().write(to: dir.appendingPathComponent(Installer.expandedMarker))
-        XCTAssertEqual(try Installer.expandDirectory(for: "27A1", in: [tmp]).path, dir.path)
-        XCTAssertEqual(Installer.expanded(in: dir)?.path, dir.appendingPathComponent("Xcode.app").path)
+        #expect(try Installer.expandDirectory(for: "27A1", in: [tmp]).path == dir.path)
+        #expect(Installer.expanded(in: dir)?.path == dir.appendingPathComponent("Xcode.app").path)
     }
 
-    func testExpandedIgnoresAnUnfinishedExpansion() throws {
+    @Test func expandedIgnoresAnUnfinishedExpansion() throws {
         let dir = root.appendingPathComponent("tmp/27A1")
         try FileManager.default.createDirectory(
             at: dir.appendingPathComponent("Xcode.app"),
             withIntermediateDirectories: true)
-        XCTAssertNil(Installer.expanded(in: dir))
+        #expect(Installer.expanded(in: dir) == nil)
     }
 
-    func testExpandDirectoryRemovesWhatAnEarlierRunOfAnotherBuildLeft() throws {
+    @Test func expandDirectoryRemovesWhatAnEarlierRunOfAnotherBuildLeft() throws {
         let tmp = root.appendingPathComponent("tmp")
         try FileManager.default.createDirectory(
             at: tmp.appendingPathComponent("26F1/Xcode.app"),
@@ -63,52 +63,54 @@ final class InstallerTests: XCTestCase {
             at: tmp.appendingPathComponent("Xcode.app"),
             withIntermediateDirectories: true)
         _ = try Installer.expandDirectory(for: "27A1", in: [tmp])
-        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: tmp.path), ["27A1"])
+        #expect(try FileManager.default.contentsOfDirectory(atPath: tmp.path) == ["27A1"])
     }
 
-    func testExpandDirectoryKeepsTheDirectoryOfAnotherRunningBuild() throws {
+    @Test func expandDirectoryKeepsTheDirectoryOfAnotherRunningBuild() throws {
         let tmp = root.appendingPathComponent("tmp")
         let other = try Installer.expandDirectory(for: "26F1", in: [tmp])
         try Data().write(to: other.appendingPathComponent("expanding"))
         _ = try Installer.expandDirectory(for: "27A1", in: [tmp])
-        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: other.path), ["expanding"])
+        #expect(try FileManager.default.contentsOfDirectory(atPath: other.path) == ["expanding"])
     }
 
-    func testExpandDirectoryRefusesABuildAnotherRunIsInstalling() throws {
+    @Test func expandDirectoryRefusesABuildAnotherRunIsInstalling() throws {
         let tmp = root.appendingPathComponent("tmp")
         let dir = try Installer.expandDirectory(for: "27A1", in: [tmp])
         try Data().write(to: dir.appendingPathComponent("expanding"))
-        XCTAssertThrowsError(try Installer.expandDirectory(for: "27A1", in: [tmp]))
-        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: dir.path), ["expanding"])
+        #expect(throws: Error.self) { try Installer.expandDirectory(for: "27A1", in: [tmp]) }
+        #expect(try FileManager.default.contentsOfDirectory(atPath: dir.path) == ["expanding"])
     }
 
-    func testExpandDirectoryFallsBackWhenTheFirstRootCannotBeCreated() throws {
+    @Test func expandDirectoryFallsBackWhenTheFirstRootCannotBeCreated() throws {
         try lock()
         let fallback = root.appendingPathComponent("fallback/tmp")
-        XCTAssertEqual(
-            try Installer.expandDirectory(for: "27A1", in: [locked.appendingPathComponent("tmp"), fallback]).path,
-            fallback.appendingPathComponent("27A1").path)
+        #expect(
+            try Installer.expandDirectory(for: "27A1", in: [locked.appendingPathComponent("tmp"), fallback]).path ==
+                fallback.appendingPathComponent("27A1").path)
         var isDirectory: ObjCBool = false
-        XCTAssertTrue(FileManager.default.fileExists(
+        #expect(FileManager.default.fileExists(
             atPath: fallback.appendingPathComponent("27A1").path,
             isDirectory: &isDirectory))
-        XCTAssertTrue(isDirectory.boolValue)
+        #expect(isDirectory.boolValue)
     }
 
-    func testExpandDirectoryFallsBackWhenTheFirstRootExistsButIsReadOnly() throws {
+    @Test func expandDirectoryFallsBackWhenTheFirstRootExistsButIsReadOnly() throws {
         try lock()
         let fallback = root.appendingPathComponent("fallback/tmp")
-        XCTAssertEqual(
-            try Installer.expandDirectory(for: "27A1", in: [locked, fallback]).path,
-            fallback.appendingPathComponent("27A1").path)
+        #expect(
+            try Installer.expandDirectory(for: "27A1", in: [locked, fallback]).path ==
+                fallback.appendingPathComponent("27A1").path)
     }
 
-    func testExpandDirectoryThrowsWhenNoRootCanBeCreated() throws {
+    @Test func expandDirectoryThrowsWhenNoRootCanBeCreated() throws {
         try lock()
-        XCTAssertThrowsError(try Installer.expandDirectory(for: "27A1", in: [locked.appendingPathComponent("tmp")]))
+        #expect(throws: Error.self) {
+            try Installer.expandDirectory(for: "27A1", in: [locked.appendingPathComponent("tmp")])
+        }
     }
 
-    private var root: URL!
+    private let root: URL
 
     /// Stands in for an /Applications this process may not write to.
     private var locked: URL {

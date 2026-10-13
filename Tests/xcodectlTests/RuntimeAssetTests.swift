@@ -7,21 +7,21 @@ import AppleArchive
 import CryptoKit
 import Foundation
 import System
-import XCTest
+import Testing
 
-final class RuntimeAssetTests: XCTestCase {
-    override func setUpWithError() throws {
+final class RuntimeAssetTests {
+    init() throws {
         root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
     }
 
-    override func tearDownWithError() throws {
-        try FileManager.default.removeItem(at: root)
+    deinit {
+        try? FileManager.default.removeItem(at: root)
     }
 
     // MARK: - Lookup
 
-    func testRequestAsksForOneBuildOfThePlatformsAssetType() throws {
+    @Test func requestAsksForOneBuildOfThePlatformsAssetType() throws {
         let runtime = SimulatorRuntime(
             name: "tvOS 18.5 Simulator Runtime",
             platform: .tvos,
@@ -33,84 +33,89 @@ final class RuntimeAssetTests: XCTestCase {
             maxXcode: nil,
             source: nil)
         let request = RuntimeAsset.request(for: runtime)
-        XCTAssertEqual(request.httpMethod, "POST")
-        XCTAssertEqual(request.url?.absoluteString, "https://gdmf.apple.com/v2/assets")
-        let body = try XCTUnwrap(JSONSerialization.jsonObject(with: XCTUnwrap(request.httpBody)) as? [String: Any])
-        XCTAssertEqual(body["AssetAudience"] as? String, "02d8e57e-dd1c-4090-aa50-b4ed2aef0062")
-        XCTAssertEqual(body["AssetType"] as? String, "com.apple.MobileAsset.appleTVOSSimulatorRuntime")
-        XCTAssertEqual(body["ClientVersion"] as? Int, 2)
-        XCTAssertEqual(body["RequestedBuild"] as? String, "22L572")
+        #expect(request.httpMethod == "POST")
+        #expect(request.url?.absoluteString == "https://gdmf.apple.com/v2/assets")
+        let httpBody = try #require(request.httpBody)
+        let body = try #require(JSONSerialization.jsonObject(with: httpBody) as? [String: Any])
+        #expect(body["AssetAudience"] as? String == "02d8e57e-dd1c-4090-aa50-b4ed2aef0062")
+        #expect(body["AssetType"] as? String == "com.apple.MobileAsset.appleTVOSSimulatorRuntime")
+        #expect(body["ClientVersion"] as? Int == 2)
+        #expect(body["RequestedBuild"] as? String == "22L572")
     }
 
-    func testParseReadsTheArchiveItsKeyAndItsChecksum() throws {
+    @Test func parseReadsTheArchiveItsKeyAndItsChecksum() throws {
         let asset = try RuntimeAsset.parse(makeToken(iOS186), build: "22G86")
-        XCTAssertEqual(
-            asset.url.absoluteString,
-            "https://updates.cdn-apple.com/2025/mobileassets/043-18341/791B091D-2B91-47E1-9FCD-0C115650A8F4/"
-                + "com_apple_MobileAsset_iOSSimulatorRuntime/BA59E4A4-296E-40D2-8551-66E0F7881682.aar")
-        XCTAssertEqual(asset.key, Data(base64Encoded: "Fx/EgjGjPyFgJ6DDXUfzd/i/UJ6kDJmtGLbba7gPess="))
-        XCTAssertEqual(asset.sha256, Data(base64Encoded: "cmEUANfLNCVIBXudKMOsDgJ3GHlrq/hFRUVKB/ClI80="))
+        #expect(
+            asset.url.absoluteString ==
+                ("https://updates.cdn-apple.com/2025/mobileassets/043-18341/791B091D-2B91-47E1-9FCD-0C115650A8F4/"
+                    + "com_apple_MobileAsset_iOSSimulatorRuntime/BA59E4A4-296E-40D2-8551-66E0F7881682.aar"))
+        #expect(asset.key == Data(base64Encoded: "Fx/EgjGjPyFgJ6DDXUfzd/i/UJ6kDJmtGLbba7gPess="))
+        #expect(asset.sha256 == Data(base64Encoded: "cmEUANfLNCVIBXudKMOsDgJ3GHlrq/hFRUVKB/ClI80="))
     }
 
     /// Betas carry a lowercase letter ("22A5282m"); the build matches whatever its case.
-    func testParseMatchesTheBuildIgnoringCase() throws {
-        XCTAssertNoThrow(try RuntimeAsset.parse(makeToken(iOS186), build: "22g86"))
+    @Test func parseMatchesTheBuildIgnoringCase() throws {
+        #expect(throws: Never.self) { try RuntimeAsset.parse(makeToken(iOS186), build: "22g86") }
     }
 
-    func testParseRejectsAnAnswerForAnotherBuild() throws {
-        XCTAssertThrowsError(try RuntimeAsset.parse(makeToken(iOS186), build: "22F76"))
+    @Test func parseRejectsAnAnswerForAnotherBuild() throws {
+        #expect(throws: Error.self) { try RuntimeAsset.parse(makeToken(iOS186), build: "22F76") }
     }
 
     /// The server answers an unknown build with HTTP 422 and a token whose payload says why.
-    func testParseReportsTheServersMessageForAnUnknownBuild() throws {
+    @Test func parseReportsTheServersMessageForAnUnknownBuild() throws {
         let answer = #"{"Status": "422 Unprocessable Entity", "Message": "Build not found: 99Z999"}"#
-        XCTAssertThrowsError(try RuntimeAsset.parse(makeToken(answer), build: "99Z999")) { error in
-            XCTAssertTrue("\(error)".contains("Build not found: 99Z999"), "\(error)")
+        let error = try #require(throws: Error.self) {
+            try RuntimeAsset.parse(makeToken(answer), build: "99Z999")
         }
+        #expect("\(error)".contains("Build not found: 99Z999"), "\(error)")
     }
 
-    func testParseRejectsAnAnswerThatIsNotAToken() {
-        XCTAssertThrowsError(try RuntimeAsset.parse(Data("<html>Service Unavailable</html>".utf8), build: "22G86"))
+    @Test func parseRejectsAnAnswerThatIsNotAToken() {
+        #expect(throws: Error.self) {
+            try RuntimeAsset.parse(Data("<html>Service Unavailable</html>".utf8), build: "22G86")
+        }
     }
 
     // MARK: - Verify
 
-    func testVerifyKeepsAnArchiveThatMatches() throws {
+    @Test func verifyKeepsAnArchiveThatMatches() throws {
         let archive = root.appendingPathComponent("a.aar")
         try Data("archive".utf8).write(to: archive)
         let asset = makeAsset(sha256: Data(SHA256.hash(data: Data("archive".utf8))))
-        XCTAssertNoThrow(try asset.verify(archive))
-        XCTAssertTrue(FileManager.default.fileExists(atPath: archive.path))
+        #expect(throws: Never.self) { try asset.verify(archive) }
+        #expect(FileManager.default.fileExists(atPath: archive.path))
     }
 
     /// A corrupt download goes, so the next run downloads it again instead of failing the same way.
-    func testVerifyDeletesAnArchiveThatDoesNotMatch() throws {
+    @Test func verifyDeletesAnArchiveThatDoesNotMatch() throws {
         let archive = root.appendingPathComponent("a.aar")
         try Data("archive".utf8).write(to: archive)
         let asset = makeAsset(sha256: Data(SHA256.hash(data: Data("other".utf8))))
-        XCTAssertThrowsError(try asset.verify(archive))
-        XCTAssertFalse(FileManager.default.fileExists(atPath: archive.path))
+        #expect(throws: Error.self) { try asset.verify(archive) }
+        #expect(!FileManager.default.fileExists(atPath: archive.path))
     }
 
     // MARK: - Extract
 
-    func testExtractWritesTheDiskImageOfTheExtractOperation() throws {
+    @Test func extractWritesTheDiskImageOfTheExtractOperation() throws {
         let key = SymmetricKey(size: .bits256)
         let image = makeImage()
         let archive = try makeArchive(key: key, image: image)
         let asset = makeAsset(key: key.withUnsafeBytes { Data($0) })
         let extracted = try asset.extractDiskImage(from: archive, into: root.appendingPathComponent("out"))
-        XCTAssertEqual(extracted.lastPathComponent, "043-18670-100.dmg")
-        XCTAssertEqual(extracted.deletingLastPathComponent().lastPathComponent, "AssetData")
-        XCTAssertEqual(try Data(contentsOf: extracted), image)
+        #expect(extracted.lastPathComponent == "043-18670-100.dmg")
+        #expect(extracted.deletingLastPathComponent().lastPathComponent == "AssetData")
+        #expect(try Data(contentsOf: extracted) == image)
     }
 
-    func testExtractRejectsTheWrongKey() throws {
+    @Test func extractRejectsTheWrongKey() throws {
         let archive = try makeArchive(key: SymmetricKey(size: .bits256), image: makeImage())
         let asset = makeAsset(key: SymmetricKey(size: .bits256).withUnsafeBytes { Data($0) })
-        XCTAssertThrowsError(try asset.extractDiskImage(from: archive, into: root.appendingPathComponent("out"))) {
-            XCTAssertTrue("\($0)".contains("cannot decrypt runtime.aar"), "\($0)")
+        let error = try #require(throws: Error.self) {
+            try asset.extractDiskImage(from: archive, into: root.appendingPathComponent("out"))
         }
+        #expect("\(error)".contains("cannot decrypt runtime.aar"), "\(error)")
     }
 
     /// The asset server's answer for iOS 18.6, trimmed to a few of its fields.
@@ -135,7 +140,7 @@ final class RuntimeAssetTests: XCTestCase {
     }
     """
 
-    private var root: URL!
+    private let root: URL
 
     /// A signed token the way the asset server sends one: base64url header, payload and signature.
     private func makeToken(_ payload: String) -> Data {
@@ -178,7 +183,7 @@ final class RuntimeAssetTests: XCTestCase {
                 try ArchiveStream.withEncodeStream(writingTo: compressed) { encoder in
                     try encoder.writeDirectoryContents(
                         archiveFrom: FilePath(files.path),
-                        keySet: XCTUnwrap(ArchiveHeader.FieldKeySet("TYP,PAT,MOD,DAT")))
+                        keySet: #require(ArchiveHeader.FieldKeySet("TYP,PAT,MOD,DAT")))
                 }
             }
         }
@@ -194,7 +199,7 @@ final class RuntimeAssetTests: XCTestCase {
             options: [.create, .truncate],
             permissions: FilePermissions(rawValue: 0o644))
         { file in
-            let encrypted = try XCTUnwrap(
+            let encrypted = try #require(
                 ArchiveByteStream.encryptionStream(writingTo: file, encryptionContext: context))
             try ArchiveStream.withEncodeStream(writingTo: encrypted) { encoder in
                 // An operation other than extract comes first and is skipped.

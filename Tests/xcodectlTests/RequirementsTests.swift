@@ -3,11 +3,12 @@
 //
 
 @testable import xcodectl
-import XCTest
+import Foundation
+import Testing
 
-final class RequirementsTests: XCTestCase {
-    func testParseReadsTheXcodeAndTheNewestMacOSOfEveryRow() {
-        XCTAssertEqual(SystemRequirements.parse(page), [
+struct RequirementsTests {
+    @Test func parseReadsTheXcodeAndTheNewestMacOSOfEveryRow() {
+        #expect(SystemRequirements.parse(page) == [
             .init(xcode: "27.1", newestMacOS: nil),
             .init(xcode: "27", newestMacOS: nil),
             .init(xcode: "26.6", newestMacOS: "26.x"),
@@ -21,112 +22,113 @@ final class RequirementsTests: XCTestCase {
         ])
     }
 
-    func testParseSkipsTablesWithoutASupportedMacOSColumn() {
+    @Test func parseSkipsTablesWithoutASupportedMacOSColumn() {
         let sdks = """
         <table><tr><th>Xcode Version</th><th>macOS SDK</th></tr>
         <tr><td>Xcode 27</td><td>macOS 27</td></tr></table>
         """
-        XCTAssertEqual(SystemRequirements.parse(sdks), [])
-        XCTAssertEqual(SystemRequirements.parse("<html><body>Service unavailable</body></html>"), [])
+        #expect(SystemRequirements.parse(sdks) == [])
+        #expect(SystemRequirements.parse("<html><body>Service unavailable</body></html>") == [])
     }
 
-    func testParseReadsCellsWithNumericEntitiesAndARowHeading() {
+    @Test func parseReadsCellsWithNumericEntitiesAndARowHeading() {
         let table = """
         <table><tr><th>Xcode Version</th><th>Supported macOS Versions</th></tr>
         <tr><th scope="row">Xcode&#160;27</th><td>macOS&#160;Tahoe&#160;26.6&#160;or&#160;later</td></tr>
         <tr><th scope="row">Xcode&#160;26.6</th><td>macOS&#160;Tahoe&#160;26.2&#160;&ndash;&#160;26.x</td></tr></table>
         """
-        XCTAssertEqual(SystemRequirements.parse(table), [
+        #expect(SystemRequirements.parse(table) == [
             .init(xcode: "27", newestMacOS: nil),
             .init(xcode: "26.6", newestMacOS: "26.x"),
         ])
     }
 
-    func testRowIsTheOneOfTheVersionElseOfItsMajorAndMinor() {
+    @Test func rowIsTheOneOfTheVersionElseOfItsMajorAndMinor() {
         let rows = SystemRequirements.parse(page)
         func row(_ number: String, _ kind: Release.Kind = .init(release: true)) -> String? {
             SystemRequirements.row(for: makeRelease(number, "", (2026, 1, 1), kind: kind), in: rows)?.xcode
         }
-        XCTAssertEqual(row("27.0"), "27")
-        XCTAssertEqual(row("27.0", .init(beta: 3)), "27")
-        XCTAssertEqual(row("27.1", .init(beta: 1)), "27.1")
-        XCTAssertEqual(row("26.4.1"), "26.4.1")
-        XCTAssertEqual(row("26.4"), "26.4.1")
-        XCTAssertEqual(row("26.4", .init(beta: 2)), "26.4.1")
-        XCTAssertEqual(row("15.0.1"), "15.0.x")
-        XCTAssertEqual(row("14.3"), "14.3")
-        XCTAssertNil(row("26.7"))
-        XCTAssertNil(row("13.4.1"))
+        #expect(row("27.0") == "27")
+        #expect(row("27.0", .init(beta: 3)) == "27")
+        #expect(row("27.1", .init(beta: 1)) == "27.1")
+        #expect(row("26.4.1") == "26.4.1")
+        #expect(row("26.4") == "26.4.1")
+        #expect(row("26.4", .init(beta: 2)) == "26.4.1")
+        #expect(row("15.0.1") == "15.0.x")
+        #expect(row("14.3") == "14.3")
+        #expect(row("26.7") == nil)
+        #expect(row("13.4.1") == nil)
     }
 
-    func testIsAtMostComparesTheComponentsBeforeTheX() {
-        XCTAssertTrue(Compatibility.isAtMost("25.6.0", "26.x"))
-        XCTAssertTrue(Compatibility.isAtMost("26.0.0", "26.x"))
-        XCTAssertTrue(Compatibility.isAtMost("26.9.3", "26.x"))
-        XCTAssertFalse(Compatibility.isAtMost("27.0.0", "26.x"))
-        XCTAssertTrue(Compatibility.isAtMost("26.1.9", "26.1.x"))
-        XCTAssertFalse(Compatibility.isAtMost("26.2.0", "26.1.x"))
+    @Test func isAtMostComparesTheComponentsBeforeTheX() {
+        #expect(Compatibility.isAtMost("25.6.0", "26.x"))
+        #expect(Compatibility.isAtMost("26.0.0", "26.x"))
+        #expect(Compatibility.isAtMost("26.9.3", "26.x"))
+        #expect(!Compatibility.isAtMost("27.0.0", "26.x"))
+        #expect(Compatibility.isAtMost("26.1.9", "26.1.x"))
+        #expect(!Compatibility.isAtMost("26.2.0", "26.1.x"))
     }
 
-    func testSupportedFromTheMinimumOnWhenThePageSetsNoLimit() {
-        XCTAssertEqual(compatibility("27.0", requires: "26.6", on: "26.6.0"), .supported)
-        XCTAssertEqual(compatibility("27.0", requires: "26.6", on: "99.0.0"), .supported)
-        XCTAssertEqual(compatibility("27.0", .init(beta: 3), requires: "26.4", on: "26.4.1"), .supported)
+    @Test func supportedFromTheMinimumOnWhenThePageSetsNoLimit() {
+        #expect(compatibility("27.0", requires: "26.6", on: "26.6.0") == .supported)
+        #expect(compatibility("27.0", requires: "26.6", on: "99.0.0") == .supported)
+        #expect(compatibility("27.0", .init(beta: 3), requires: "26.4", on: "26.4.1") == .supported)
     }
 
-    func testNeedsMacOSBelowTheMinimumOfItsBuild() {
-        XCTAssertEqual(compatibility("27.0", requires: "26.6", on: "26.5.9"), .needsMacOS("26.6"))
-        XCTAssertEqual(compatibility("27.0", .init(beta: 3), requires: "26.4", on: "26.3.0"), .needsMacOS("26.4"))
+    @Test func needsMacOSBelowTheMinimumOfItsBuild() {
+        #expect(compatibility("27.0", requires: "26.6", on: "26.5.9") == .needsMacOS("26.6"))
+        #expect(compatibility("27.0", .init(beta: 3), requires: "26.4", on: "26.3.0") == .needsMacOS("26.4"))
     }
 
-    func testOnlyUpToMacOSPastTheNewestOnThePage() {
-        XCTAssertEqual(compatibility("26.6", requires: "26.2", on: "26.9.1"), .supported)
-        XCTAssertEqual(compatibility("26.6", requires: "26.2", on: "27.0.0"), .onlyUpToMacOS("26.x"))
-        XCTAssertEqual(compatibility("16.4", requires: "15.3", on: "26.1.9"), .supported)
-        XCTAssertEqual(compatibility("16.4", requires: "15.3", on: "26.2.0"), .onlyUpToMacOS("26.1.x"))
+    @Test func onlyUpToMacOSPastTheNewestOnThePage() {
+        #expect(compatibility("26.6", requires: "26.2", on: "26.9.1") == .supported)
+        #expect(compatibility("26.6", requires: "26.2", on: "27.0.0") == .onlyUpToMacOS("26.x"))
+        #expect(compatibility("16.4", requires: "15.3", on: "26.1.9") == .supported)
+        #expect(compatibility("16.4", requires: "15.3", on: "26.2.0") == .onlyUpToMacOS("26.1.x"))
     }
 
-    func testUnknownWithoutARowOrAMinimum() {
-        XCTAssertEqual(compatibility("13.4.1", requires: "12.5", on: "27.0.0"), .unknown)
-        XCTAssertEqual(compatibility("27.0", requires: nil, on: "27.0.0"), .unknown)
+    @Test func unknownWithoutARowOrAMinimum() {
+        #expect(compatibility("13.4.1", requires: "12.5", on: "27.0.0") == .unknown)
+        #expect(compatibility("27.0", requires: nil, on: "27.0.0") == .unknown)
     }
 
-    func testWithoutThePageOnlyAMissingMinimumIsKnown() {
-        XCTAssertEqual(compatibility("27.0", requires: "26.6", on: "26.2.0", page: ""), .needsMacOS("26.6"))
-        XCTAssertEqual(compatibility("27.0", requires: "26.6", on: "27.0.0", page: ""), .unknown)
+    @Test func withoutThePageOnlyAMissingMinimumIsKnown() {
+        #expect(compatibility("27.0", requires: "26.6", on: "26.2.0", page: "") == .needsMacOS("26.6"))
+        #expect(compatibility("27.0", requires: "26.6", on: "27.0.0", page: "") == .unknown)
     }
 
-    func testTextMarksTheRangeOfMacOSVersions() {
-        XCTAssertEqual(Compatibility.supported.text(range: "26.6 or later").plain(), "✓ 26.6 or later")
-        XCTAssertEqual(Compatibility.needsMacOS("26.6").text(range: "26.6 or later").plain(), "✗ 26.6 or later")
-        XCTAssertEqual(Compatibility.onlyUpToMacOS("26.x").text(range: "26.2–26.x").plain(), "✗ 26.2–26.x")
-        XCTAssertEqual(Compatibility.unknown.text(range: "from 12.5").plain(), "from 12.5")
+    @Test func textMarksTheRangeOfMacOSVersions() {
+        #expect(Compatibility.supported.text(range: "26.6 or later").plain() == "✓ 26.6 or later")
+        #expect(Compatibility.needsMacOS("26.6").text(range: "26.6 or later").plain() == "✗ 26.6 or later")
+        #expect(Compatibility.onlyUpToMacOS("26.x").text(range: "26.2–26.x").plain() == "✗ 26.2–26.x")
+        #expect(Compatibility.unknown.text(range: "from 12.5").plain() == "from 12.5")
     }
 
-    func testRangeRunsFromTheMinimumToTheNewestOnThePage() {
+    @Test func rangeRunsFromTheMinimumToTheNewestOnThePage() {
         let rows = SystemRequirements.parse(page)
-        XCTAssertEqual(
-            Compatibility.range(of: makeRelease("26.6", "", (2026, 1, 1), requires: "26.2"), requirements: rows),
-            "26.2–26.x")
-        XCTAssertEqual(
-            Compatibility.range(of: makeRelease("27.0", "", (2026, 1, 1), requires: "26.6"), requirements: rows),
-            "26.6 or later")
-        XCTAssertEqual(
-            Compatibility.range(of: makeRelease("13.4.1", "", (2026, 1, 1), requires: "12.5"), requirements: rows),
-            "from 12.5")
-        XCTAssertEqual(
-            Compatibility.range(of: makeRelease("27.0", "", (2026, 1, 1), requires: "26.6"), requirements: []),
-            "from 26.6")
-        XCTAssertNil(Compatibility.range(of: makeRelease("27.0", "", (2026, 1, 1), requires: nil), requirements: rows))
+        #expect(
+            Compatibility.range(of: makeRelease("26.6", "", (2026, 1, 1), requires: "26.2"), requirements: rows) ==
+                "26.2–26.x")
+        #expect(
+            Compatibility.range(of: makeRelease("27.0", "", (2026, 1, 1), requires: "26.6"), requirements: rows) ==
+                "26.6 or later")
+        #expect(
+            Compatibility.range(of: makeRelease("13.4.1", "", (2026, 1, 1), requires: "12.5"), requirements: rows) ==
+                "from 12.5")
+        #expect(
+            Compatibility.range(of: makeRelease("27.0", "", (2026, 1, 1), requires: "26.6"), requirements: []) ==
+                "from 26.6")
+        #expect(Compatibility
+            .range(of: makeRelease("27.0", "", (2026, 1, 1), requires: nil), requirements: rows) == nil)
     }
 
-    func testAddingPutsTheLineUnderTheTitle() {
-        XCTAssertEqual(
-            Compatibility.adding("On this Mac", to: "# Xcode 27 Release Notes\n\nOverview.\n\n## Swift"),
-            "# Xcode 27 Release Notes\n\nOn this Mac\n\nOverview.\n\n## Swift")
-        XCTAssertEqual(Compatibility.adding("On this Mac", to: "# Xcode 27"), "# Xcode 27\n\nOn this Mac")
-        XCTAssertEqual(Compatibility.adding("On this Mac", to: "Overview."), "On this Mac\n\nOverview.")
-        XCTAssertEqual(Compatibility.adding(nil, to: "# Xcode 27\n\nOverview."), "# Xcode 27\n\nOverview.")
+    @Test func addingPutsTheLineUnderTheTitle() {
+        #expect(
+            Compatibility.adding("On this Mac", to: "# Xcode 27 Release Notes\n\nOverview.\n\n## Swift") ==
+                "# Xcode 27 Release Notes\n\nOn this Mac\n\nOverview.\n\n## Swift")
+        #expect(Compatibility.adding("On this Mac", to: "# Xcode 27") == "# Xcode 27\n\nOn this Mac")
+        #expect(Compatibility.adding("On this Mac", to: "Overview.") == "On this Mac\n\nOverview.")
+        #expect(Compatibility.adding(nil, to: "# Xcode 27\n\nOverview.") == "# Xcode 27\n\nOverview.")
     }
 
     /// An excerpt of https://developer.apple.com/xcode/system-requirements/: the headings of both

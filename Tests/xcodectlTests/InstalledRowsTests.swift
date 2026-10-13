@@ -3,43 +3,44 @@
 //
 
 @testable import xcodectl
-import XCTest
+import Foundation
+import Testing
 
-final class InstalledRowsTests: XCTestCase {
-    func testAnXcodeRowCarriesItsSizeAndPath() {
+struct InstalledRowsTests {
+    @Test func anXcodeRowCarriesItsSizeAndPath() {
         let rows = installedRows([(app, 3_583_873_024, [])], active: nil)
-        XCTAssertEqual(rows, [
+        #expect(rows == [
             ["VERSION", "BUILD", "SIZE", "PATH", ""],
             ["27.0", "27A266a", "3.3 GB", "/Applications/Xcode-27.0.app", ""],
         ])
     }
 
-    func testTheActiveXcodeIsMarkedActive() {
+    @Test func theActiveXcodeIsMarkedActive() {
         let rows = installedRows([(app, 0, []), (beta, 0, [])], active: beta.path.path)
-        XCTAssertEqual(rows.map(\.last), ["", "", "* active"])
+        #expect(rows.map(\.last) == ["", "", "* active"])
     }
 
-    func testRuntimesFollowTheXcodeThatUsesThem() throws {
+    @Test func runtimesFollowTheXcodeThatUsesThem() throws {
         let runtimes = try SimCtl.parse(makeSimctlOutput([
             ("A", "com.apple.platform.iphonesimulator", "27.0", "24A434", "Ready", 8_067_000_161, "/a.asset/AssetData"),
         ]))
         let rows = installedRows([(app, 0, runtimes), (beta, 0, [])], active: nil)
-        XCTAssertEqual(rows.map(\.first), ["VERSION", "27.0", "  iOS 27.0", "27.1"])
-        XCTAssertEqual(rows[2], ["  iOS 27.0", "24A434", "7.5 GB", "", ""])
+        #expect(rows.map(\.first) == ["VERSION", "27.0", "  iOS 27.0", "27.1"])
+        #expect(rows[2] == ["  iOS 27.0", "24A434", "7.5 GB", "", ""])
     }
 
-    func testAnXcodeStillBeingSizedShowsThePlaceholder() {
+    @Test func anXcodeStillBeingSizedShowsThePlaceholder() {
         let rows = installedRows([(app, nil, [])], active: nil, unknownSize: "…")
-        XCTAssertEqual(rows[1], ["27.0", "27A266a", "…", "/Applications/Xcode-27.0.app", ""])
+        #expect(rows[1] == ["27.0", "27A266a", "…", "/Applications/Xcode-27.0.app", ""])
     }
 
     /// `--no-size` skips the Xcode bundles; runtime sizes come from simctl for free.
-    func testAnUnsizedXcodeLeavesItsSizeEmptyButKeepsRuntimeSizes() throws {
+    @Test func anUnsizedXcodeLeavesItsSizeEmptyButKeepsRuntimeSizes() throws {
         let runtimes = try SimCtl.parse(makeSimctlOutput([
             ("A", "com.apple.platform.iphonesimulator", "27.0", "24A434", "Ready", 8_067_000_161, "/a.asset/AssetData"),
         ]))
         let rows = installedRows([(app, nil, runtimes)], active: nil)
-        XCTAssertEqual(rows.map { $0[2] }, ["SIZE", "", "7.5 GB"])
+        #expect(rows.map { $0[2] } == ["SIZE", "", "7.5 GB"])
     }
 
     private let app = makeApp("Xcode-27.0.app", version: "27.0", build: "27A266a")

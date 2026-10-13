@@ -3,72 +3,64 @@
 //
 
 @testable import xcodectl
-import XCTest
+import Foundation
+import Testing
 
-final class AutologinTests: XCTestCase {
-    func testInstallSignsInByDefault() throws {
-        let install = try XCTUnwrap(XcodeCtl.parseAsRoot(["install", "26.6"]) as? Install)
-        XCTAssertTrue(install.autologin)
+struct AutologinTests {
+    @Test func installSignsInByDefault() throws {
+        let install = try #require(XcodeCtl.parseAsRoot(["install", "26.6"]) as? Install)
+        #expect(install.autologin)
     }
 
-    func testNoAutologinTurnsItOff() throws {
-        let install = try XCTUnwrap(XcodeCtl.parseAsRoot(["install", "--no-autologin", "26.6"]) as? Install)
-        XCTAssertFalse(install.autologin)
-        let update = try XCTUnwrap(XcodeCtl.parseAsRoot(["update", "--no-autologin"]) as? Update)
-        XCTAssertFalse(update.autologin)
-        let download = try XCTUnwrap(
+    @Test func noAutologinTurnsItOff() throws {
+        let install = try #require(XcodeCtl.parseAsRoot(["install", "--no-autologin", "26.6"]) as? Install)
+        #expect(!install.autologin)
+        let update = try #require(XcodeCtl.parseAsRoot(["update", "--no-autologin"]) as? Update)
+        #expect(!update.autologin)
+        let download = try #require(
             XcodeCtl.parseAsRoot(["_download", "u", "d", "--with-ticket", "--no-autologin"]) as? DownloadURL)
-        XCTAssertFalse(download.autologin)
+        #expect(!download.autologin)
     }
 
-    func testRefreshWithoutLoginCookieThrowsSessionExpired() async {
-        do {
-            _ = try await Session.refreshTicket([])
-            XCTFail("expected SessionExpired")
-        } catch {
-            XCTAssertTrue(error is SessionExpired, "\(error)")
+    @Test func refreshWithoutLoginCookieThrowsSessionExpired() async {
+        await #expect(throws: SessionExpired.self) {
+            try await Session.refreshTicket([])
         }
     }
 
-    func testValidTicketIsReturnedWithoutSigningIn() async throws {
+    @Test func validTicketIsReturnedWithoutSigningIn() async throws {
         let cookies = [makeCookie("myacinfo"), makeCookie("ADCDownloadAuth", expires: Date() + 3600)]
         let result = try await Session.ensureTicket(cookies, source: .keychain) {
-            XCTFail("signed in although the ticket is valid")
+            Issue.record("signed in although the ticket is valid")
             return []
         }
-        XCTAssertEqual(result, cookies)
+        #expect(result == cookies)
     }
 
-    func testExpiredKeychainSessionSignsIn() async throws {
+    @Test func expiredKeychainSessionSignsIn() async throws {
         let fresh = [makeCookie("myacinfo"), makeCookie("ADCDownloadAuth", expires: Date() + 3600)]
         var calls = 0
         let result = try await Session.ensureTicket([], source: .keychain) {
             calls += 1
             return fresh
         }
-        XCTAssertEqual(calls, 1)
-        XCTAssertEqual(result, fresh)
+        #expect(calls == 1)
+        #expect(result == fresh)
     }
 
-    func testExpiredKeychainSessionWithoutAutologinThrows() async {
-        do {
-            _ = try await Session.ensureTicket([], source: .keychain, signIn: nil)
-            XCTFail("expected SessionExpired")
-        } catch {
-            XCTAssertTrue(error is SessionExpired, "\(error)")
+    @Test func expiredKeychainSessionWithoutAutologinThrows() async {
+        await #expect(throws: SessionExpired.self) {
+            try await Session.ensureTicket([], source: .keychain, signIn: nil)
         }
     }
 
     /// A new login lands in the Keychain, but XCODECTL_SESSION would still win on the next run.
-    func testExpiredEnvironmentSessionNeverSignsIn() async {
-        do {
-            _ = try await Session.ensureTicket([], source: .environment) {
-                XCTFail("signed in for an XCODECTL_SESSION session")
+    @Test func expiredEnvironmentSessionNeverSignsIn() async {
+        await #expect(throws: SessionExpired.self) {
+            try await Session.ensureTicket([], source: .environment) {
+                Issue.record("signed in for an XCODECTL_SESSION session")
                 return []
             }
-            XCTFail("expected SessionExpired")
-        } catch {
-            XCTAssertTrue(error is SessionExpired, "\(error)")
         }
     }
 

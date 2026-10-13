@@ -3,47 +3,48 @@
 //
 
 @testable import xcodectl
-import XCTest
+import Foundation
+import Testing
 
 // MARK: - ReleasesTests
 
-final class ReleasesTests: XCTestCase {
-    func testDefaultListingShowsTheTwoLatestStableMajorsWithoutOldPrereleases() {
-        XCTAssertEqual(Releases.defaultListing(stableNewest).map(\.display), ["27.0", "26.6", "26.5"])
+struct ReleasesTests {
+    @Test func defaultListingShowsTheTwoLatestStableMajorsWithoutOldPrereleases() {
+        #expect(Releases.defaultListing(stableNewest).map(\.display) == ["27.0", "26.6", "26.5"])
     }
 
-    func testDefaultListingAddsPrereleasesNewerThanTheLatestStable() {
-        XCTAssertEqual(
-            Releases.defaultListing(betaNewest).map(\.display),
-            ["28.0-beta2", "28.0-beta1", "27.1", "27.0", "26.6"])
+    @Test func defaultListingAddsPrereleasesNewerThanTheLatestStable() {
+        #expect(
+            Releases.defaultListing(betaNewest).map(\.display) ==
+                ["28.0-beta2", "28.0-beta1", "27.1", "27.0", "26.6"])
     }
 
     /// A patch of the old major can be released after the new major; the majors decide, not the dates.
-    func testDefaultListingKeepsTheHighestMajorWhenAnOlderMajorIsNewer() {
+    @Test func defaultListingKeepsTheHighestMajorWhenAnOlderMajorIsNewer() {
         let releases = [makeRelease("26.7", "26G22", (2026, 10, 1))] + stableNewest
-        XCTAssertEqual(Releases.defaultListing(releases).map(\.display), ["26.7", "27.0", "26.6", "26.5"])
+        #expect(Releases.defaultListing(releases).map(\.display) == ["26.7", "27.0", "26.6", "26.5"])
     }
 
-    func testStableListingDropsEveryPrerelease() {
-        XCTAssertEqual(Releases.defaultListing(betaNewest, .stable).map(\.display), ["27.1", "27.0", "26.6"])
-        XCTAssertEqual(Releases.defaultListing(stableNewest, .stable).map(\.display), ["27.0", "26.6", "26.5"])
+    @Test func stableListingDropsEveryPrerelease() {
+        #expect(Releases.defaultListing(betaNewest, .stable).map(\.display) == ["27.1", "27.0", "26.6"])
+        #expect(Releases.defaultListing(stableNewest, .stable).map(\.display) == ["27.0", "26.6", "26.5"])
     }
 
-    func testBetaListingShowsOnlyPrereleasesOfTheShownMajors() {
-        XCTAssertEqual(Releases.defaultListing(stableNewest, .beta).map(\.display), ["27.0-rc1", "26.5-rc1"])
-        XCTAssertEqual(
-            Releases.defaultListing(betaNewest, .beta).map(\.display),
-            ["28.0-beta2", "28.0-beta1", "27.1-rc1"])
+    @Test func betaListingShowsOnlyPrereleasesOfTheShownMajors() {
+        #expect(Releases.defaultListing(stableNewest, .beta).map(\.display) == ["27.0-rc1", "26.5-rc1"])
+        #expect(
+            Releases.defaultListing(betaNewest, .beta).map(\.display) ==
+                ["28.0-beta2", "28.0-beta1", "27.1-rc1"])
     }
 
-    func testFilterNarrowsSearchResults() throws {
+    @Test func filterNarrowsSearchResults() throws {
         let hits = try Releases.search(stableNewest, regex: "^2[67]")
-        XCTAssertEqual(Releases.filter(hits, .all).map(\.display), hits.map(\.display))
-        XCTAssertEqual(Releases.filter(hits, .stable).map(\.display), ["27.0", "26.6", "26.5"])
-        XCTAssertEqual(Releases.filter(hits, .beta).map(\.display), ["27.0-rc1", "26.5-rc1"])
+        #expect(Releases.filter(hits, .all).map(\.display) == hits.map(\.display))
+        #expect(Releases.filter(hits, .stable).map(\.display) == ["27.0", "26.6", "26.5"])
+        #expect(Releases.filter(hits, .beta).map(\.display) == ["27.0-rc1", "26.5-rc1"])
     }
 
-    func testSortedByVersionOrdersByNumberThenKind() {
+    @Test func sortedByVersionOrdersByNumberThenKind() {
         let releases = [
             makeRelease("27.1", "27A9275", (2026, 10, 5), kind: .init(rc: 1)),
             makeRelease("27.2", "27B5028f", (2026, 9, 28), kind: .init(beta: 2)),
@@ -56,34 +57,32 @@ final class ReleasesTests: XCTestCase {
             makeRelease("12.0", "12A7208", (2020, 9, 16), kind: .init(gm: true)),
             makeRelease("12.0", "12A7209", (2020, 9, 15), kind: .init(gmSeed: 1)),
         ]
-        XCTAssertEqual(
-            Releases.sorted(releases, by: .byVersion).map(\.display),
-            [
-                "27.2-beta2", "27.2-beta1", "27.1-rc1", "27.1-beta1", "27.0.1", "27", "27.0.0-rc1", "27.0-beta3",
-                "12.0-gm", "12.0-gmseed1",
-            ])
+        #expect(Releases.sorted(releases, by: .byVersion).map(\.display) == [
+            "27.2-beta2", "27.2-beta1", "27.1-rc1", "27.1-beta1", "27.0.1", "27", "27.0.0-rc1", "27.0-beta3",
+            "12.0-gm", "12.0-gmseed1",
+        ])
     }
 
-    func testLatestBetaTakesTheHighestVersion() throws {
+    @Test func latestBetaTakesTheHighestVersion() throws {
         let releases = [
             makeRelease("27.1", "27A9275", (2026, 10, 5), kind: .init(rc: 1)),
             makeRelease("27.2", "27B5028f", (2026, 9, 28), kind: .init(beta: 2)),
             makeRelease("27.0", "27A266a", (2026, 9, 14)),
         ]
-        XCTAssertEqual(try Query("latest-beta").resolve(in: releases).release.display, "27.2-beta2")
+        #expect(try Query("latest-beta").resolve(in: releases).release.display == "27.2-beta2")
     }
 
     /// data.json serves a new major's first beta above older finals released after it.
-    func testSortedByReleaseDateOrdersByDateThenVersion() {
+    @Test func sortedByReleaseDateOrdersByDateThenVersion() {
         let releases = [
             makeRelease("26.6", "17F109", (2026, 6, 8), kind: .init(rc: 1)),
             makeRelease("27.0", "27A5218g", (2026, 6, 8), kind: .init(beta: 1)),
             makeRelease("26.6", "17F113", (2026, 6, 25)),
             makeRelease("26.5", "17F42", (2026, 5, 11)),
         ]
-        XCTAssertEqual(
-            Releases.sorted(releases, by: .byDate).map(\.display),
-            ["26.6", "27.0-beta1", "26.6-rc1", "26.5"])
+        #expect(
+            Releases.sorted(releases, by: .byDate).map(\.display) ==
+                ["26.6", "27.0-beta1", "26.6-rc1", "26.5"])
     }
 
     /// data.json order: newest first.
@@ -110,49 +109,49 @@ final class ReleasesTests: XCTestCase {
 
 // MARK: - UpdatesTests
 
-final class UpdatesTests: XCTestCase {
-    func testBetaMovesToTheNewestBuildOfItsMinorAndOthersStay() {
-        XCTAssertEqual(
+struct UpdatesTests {
+    @Test func betaMovesToTheNewestBuildOfItsMinorAndOthersStay() {
+        #expect(
             updates([
                 makeApp("Xcode-27.1-beta1.app", version: "27.1", build: "27A9269"),
                 makeApp("Xcode-27.2-beta1.app", version: "27.2", build: "27B5019j"),
-            ]),
-            ["Xcode-27.2-beta1.app -> 27.2-beta2"])
+            ]) ==
+                ["Xcode-27.2-beta1.app -> 27.2-beta2"])
     }
 
-    func testFinalMovesToTheNewestFinalOfItsMinorOnly() {
-        XCTAssertEqual(
+    @Test func finalMovesToTheNewestFinalOfItsMinorOnly() {
+        #expect(
             updates([
                 makeApp("Xcode-27.0.app", version: "27.0", build: "27A266a"),
                 makeApp("Xcode-26.4.app", version: "26.4", build: "17E192"),
                 makeApp("Xcode-26.6.app", version: "26.6", build: "17F113"),
-            ]),
-            ["Xcode-27.0.app -> 27.0.1", "Xcode-26.4.app -> 26.4.1"])
+            ]) ==
+                ["Xcode-27.0.app -> 27.0.1", "Xcode-26.4.app -> 26.4.1"])
     }
 
-    func testBetaOfAShippedMinorMovesToTheFinal() {
-        XCTAssertEqual(
-            updates([makeApp("Xcode-27.0-beta1.app", version: "27.0", build: "27A5218g")]),
-            ["Xcode-27.0-beta1.app -> 27.0.1"])
+    @Test func betaOfAShippedMinorMovesToTheFinal() {
+        #expect(
+            updates([makeApp("Xcode-27.0-beta1.app", version: "27.0", build: "27A5218g")]) ==
+                ["Xcode-27.0-beta1.app -> 27.0.1"])
     }
 
-    func testTargetAlreadyInstalledOrUnknownBuildIsSkipped() {
-        XCTAssertEqual(
+    @Test func targetAlreadyInstalledOrUnknownBuildIsSkipped() {
+        #expect(
             updates([
                 makeApp("Xcode-27.2-beta1.app", version: "27.2", build: "27B5019j"),
                 makeApp("Xcode-27.2-beta2.app", version: "27.2", build: "27B5030a"),
                 makeApp("Xcode-local.app", version: "27.0", build: "27Z999"),
-            ]),
-            [])
+            ]) ==
+                [])
     }
 
-    func testTwoInstallsOfOneMinorShareOneUpdate() {
-        XCTAssertEqual(
+    @Test func twoInstallsOfOneMinorShareOneUpdate() {
+        #expect(
             updates([
                 makeApp("Xcode-27.0.app", version: "27.0", build: "27A266a"),
                 makeApp("Xcode-27.0-beta1.app", version: "27.0", build: "27A5218g"),
-            ]),
-            ["Xcode-27.0.app -> 27.0.1"])
+            ]) ==
+                ["Xcode-27.0.app -> 27.0.1"])
     }
 
     /// data.json order: newest first.

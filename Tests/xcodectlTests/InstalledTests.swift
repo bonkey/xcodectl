@@ -4,33 +4,33 @@
 
 @testable import xcodectl
 import Foundation
-import XCTest
+import Testing
 
-final class InstalledTests: XCTestCase {
-    func testVersionInNameReadsTheLeadingDigits() {
-        XCTAssertEqual(Installed.versionInName(bundle("Xcode-27.0.0-release.candidate.app")), "27.0.0")
-        XCTAssertEqual(Installed.versionInName(bundle("Xcode-26.6.app")), "26.6")
-        XCTAssertEqual(Installed.versionInName(bundle("Xcode_27.0.0_Release_Candidate.app")), "27.0.0")
-        XCTAssertNil(Installed.versionInName(bundle("Xcode.app")))
-        XCTAssertNil(Installed.versionInName(bundle("Xcode-beta.app")))
+struct InstalledTests {
+    @Test func versionInNameReadsTheLeadingDigits() {
+        #expect(Installed.versionInName(bundle("Xcode-27.0.0-release.candidate.app")) == "27.0.0")
+        #expect(Installed.versionInName(bundle("Xcode-26.6.app")) == "26.6")
+        #expect(Installed.versionInName(bundle("Xcode_27.0.0_Release_Candidate.app")) == "27.0.0")
+        #expect(Installed.versionInName(bundle("Xcode.app")) == nil)
+        #expect(Installed.versionInName(bundle("Xcode-beta.app")) == nil)
     }
 
-    func testLeftoverMatchesTheVersionInTheDirectoryName() {
+    @Test func leftoverMatchesTheVersionInTheDirectoryName() {
         let candidates = [bundle("Xcode-27.0.0-release.candidate.app")]
-        XCTAssertEqual(Installed.leftover(matching: "27", in: candidates), candidates[0])
-        XCTAssertEqual(Installed.leftover(matching: "27.0", in: candidates), candidates[0])
-        XCTAssertNil(Installed.leftover(matching: "26", in: candidates))
+        #expect(Installed.leftover(matching: "27", in: candidates) == candidates[0])
+        #expect(Installed.leftover(matching: "27.0", in: candidates) == candidates[0])
+        #expect(Installed.leftover(matching: "26", in: candidates) == nil)
     }
 
     /// "latest" and a build number say nothing about the name, so they never match a leftover.
-    func testLeftoverIgnoresQueriesWithoutVersionNumbers() {
+    @Test func leftoverIgnoresQueriesWithoutVersionNumbers() {
         let candidates = [bundle("Xcode-27.0.0-release.candidate.app")]
-        XCTAssertNil(Installed.leftover(matching: "latest", in: candidates))
-        XCTAssertNil(Installed.leftover(matching: "27A266a", in: candidates))
+        #expect(Installed.leftover(matching: "latest", in: candidates) == nil)
+        #expect(Installed.leftover(matching: "27A266a", in: candidates) == nil)
     }
 
     /// Xcode hard-links thousands of files; the space they take counts once, the way `du` counts it.
-    func testSizeCountsAHardLinkedFileOnce() throws {
+    @Test func sizeCountsAHardLinkedFileOnce() throws {
         let app = FileManager.default.temporaryDirectory.appendingPathComponent("SizeTest-\(UUID().uuidString).app")
         try FileManager.default.createDirectory(
             at: app.appendingPathComponent("Contents"),
@@ -41,8 +41,8 @@ final class InstalledTests: XCTestCase {
         let single = Installed.size(of: app)
         try FileManager.default.linkItem(at: file, to: app.appendingPathComponent("Contents/tool-link"))
 
-        XCTAssertGreaterThanOrEqual(single, 1_048_576)
-        XCTAssertEqual(Installed.size(of: app), single)
+        #expect(single >= 1_048_576)
+        #expect(Installed.size(of: app) == single)
     }
 
     private func bundle(_ name: String) -> URL {
