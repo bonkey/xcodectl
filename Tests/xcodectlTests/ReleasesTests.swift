@@ -82,7 +82,7 @@ final class ReleasesTests: XCTestCase {
             makeRelease("26.5", "17F42", (2026, 5, 11)),
         ]
         XCTAssertEqual(
-            Releases.sorted(releases, by: .byReleaseDate).map(\.display),
+            Releases.sorted(releases, by: .byDate).map(\.display),
             ["26.6", "27.0-beta1", "26.6-rc1", "26.5"])
     }
 

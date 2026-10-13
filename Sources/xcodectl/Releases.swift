@@ -142,7 +142,7 @@ enum Releases {
 
     enum Order: CaseIterable {
         case byVersion
-        case byReleaseDate
+        case byDate
     }
 
     static let url = URL(string: "https://xcodereleases.com/data.json")!
@@ -200,11 +200,11 @@ enum Releases {
     }
 
     /// Newest first. `.byVersion` compares the number, then the kind (dp, beta, gm seed, rc, gm, final)
-    /// and its number; `.byReleaseDate` the release date, then the version. Ties keep their order.
+    /// and its number; `.byDate` the release date, then the version. Ties keep their order.
     static func sorted(_ releases: [Release], by order: Order) -> [Release] {
         let kinds = ["dp", "beta", "gmseed", "rc", "gm"]
         func key(_ r: Release) -> [Int] {
-            let date = order == .byReleaseDate ? [r.date.year, r.date.month, r.date.day] : []
+            let date = order == .byDate ? [r.date.year, r.date.month, r.date.day] : []
             let rank = r.isFinal ? kinds.count : r.kindName.flatMap(kinds.firstIndex(of:)) ?? -1
             return date + Array((r.numberComponents + [0, 0]).prefix(3)) + [rank, r.kindNumber ?? 0]
         }

@@ -280,7 +280,7 @@ struct List: AsyncParsableCommand {
             Without a regex: finals of the two latest majors, plus any prerelease newer than the newest \
             final. --stable keeps finals only, --beta keeps prereleases only. A regex searches every \
             release; --stable / --beta narrow the matches. Xcode versions list highest version first, or \
-            newest first with --by-release-date. A platform (ios, tvos, watchos, visionos) or \
+            newest first with --by-date. A platform (ios, tvos, watchos, visionos) or \
             `runtimes` lists the simulator runtimes Apple offers for this Mac instead: the newest major of \
             each platform, every version with --all. Runtimes from iOS 18, tvOS 18, watchOS 11 and visionOS 2 \
             on need no Apple ID: Apple serves them publicly and the Xcode used installs them. Older ones, back \
@@ -313,7 +313,7 @@ struct List: AsyncParsableCommand {
             throw Fail("--all applies to runtimes, e.g. `xcodectl list ios --all`; a regex searches every Xcode")
         }
         guard order == nil || runtimes == nil else {
-            throw Fail("--by-version and --by-release-date apply to Xcode versions, not runtimes")
+            throw Fail("--by-version and --by-date apply to Xcode versions, not runtimes")
         }
     }
 
@@ -1090,7 +1090,7 @@ extension Releases.Order: EnumerableFlag {
         switch value {
         case .byVersion:
             "Highest version first (default)."
-        case .byReleaseDate:
+        case .byDate:
             "Newest release date first."
         }
     }
