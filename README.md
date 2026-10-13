@@ -8,7 +8,7 @@ window, the tool keeps the session in your Keychain and does the rest.
 xcodectl auth login                sign in to Apple Developer (once)
 xcodectl auth status               whether Apple still accepts the session; exits 1 when not
 xcodectl list [<regex>]            two latest majors + running betas, and whether each runs on this Mac;
-                                   --stable/--beta; regex searches all
+                                   --stable/--beta, --by-version/--by-release-date; regex searches all
 xcodectl installed [--no-size]     what is in /Applications with its size and the runtimes each Xcode uses
 xcodectl release-notes [<ver>] [<ver2>] [--markdown | --plain] [--abridged] [--ask "<question>"]
                                    notes rendered in the terminal; two versions: what changed; no login needed
@@ -42,8 +42,8 @@ xcodectl auth logout               delete the session from this Mac's Keychain
 ```
 $ xcodectl list
 VERSION     BUILD     RELEASED    STATUS     MACOS
-27.1-beta1  27A9269   2026-09-18  * active   ✓ 26.6 or later
 27.2-beta1  27B5019j  2026-09-16             ✓ 26.6 or later
+27.1-beta1  27A9269   2026-09-18  * active   ✓ 26.6 or later
 27.0        27A266a   2026-09-14  installed  ✓ 26.6 or later
 26.6        17F113    2026-06-25             ✗ 26.2–26.x
 26.5        17F42     2026-05-11             ✗ 26.2–26.x
@@ -55,7 +55,8 @@ VERSION     BUILD     RELEASED    STATUS     MACOS
 
 MACOS is the range of macOS versions that Xcode runs on, behind `✓` when this Mac's macOS is in it
 and `✗` when it is too old or too new; here the Mac runs macOS 27.0. `--stable` and `--beta` narrow
-the list, a regex searches all versions: `xcodectl list '^16\.'`.
+the list, a regex searches all versions: `xcodectl list '^16\.'`. The highest version comes first;
+`--by-release-date` puts the newest release first instead.
 
 ```
 $ xcodectl installed

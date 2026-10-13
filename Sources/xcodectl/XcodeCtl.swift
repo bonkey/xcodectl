@@ -96,10 +96,7 @@ func pickRelease(_ question: String, from releases: [Release]) throws -> Release
     if let stable = releases.first(where: \.isFinal) {
         choices.append(choice(stable, "latest"))
     }
-    if let pre = releases.first(where: { !$0.isFinal }),
-       let stable = releases.first(where: \.isFinal),
-       pre.dateString > stable.dateString
-    {
+    if let pre = Releases.sorted(releases, by: .byVersion).first, !pre.isFinal {
         choices.append(choice(pre, "latest beta"))
     }
     return try pick(question, from: choices)
@@ -282,7 +279,8 @@ struct List: AsyncParsableCommand {
             discussion: """
             Without a regex: finals of the two latest majors, plus any prerelease newer than the newest \
             final. --stable keeps finals only, --beta keeps prereleases only. A regex searches every \
-            release; --stable / --beta narrow the matches. A platform (ios, tvos, watchos, visionos) or \
+            release; --stable / --beta narrow the matches. Xcode versions list highest version first, or \
+            newest first with --by-release-date. A platform (ios, tvos, watchos, visionos) or \
             `runtimes` lists the simulator runtimes Apple offers for this Mac instead: the newest major of \
             each platform, every version with --all. Runtimes from iOS 18, tvOS 18, watchOS 11 and visionOS 2 \
             on need no Apple ID: Apple serves them publicly and the Xcode used installs them. Older ones, back \
@@ -304,12 +302,18 @@ struct List: AsyncParsableCommand {
     @Flag(help: "Runtimes only: every version, not just the newest major of each platform.")
     var all = false
 
+    @Flag
+    var order: Releases.Order?
+
     func validate() throws {
         guard !(stable && beta) else {
             throw Fail("--stable and --beta exclude each other")
         }
         guard !all || runtimes != nil else {
             throw Fail("--all applies to runtimes, e.g. `xcodectl list ios --all`; a regex searches every Xcode")
+        }
+        guard order == nil || runtimes == nil else {
+            throw Fail("--by-version and --by-release-date apply to Xcode versions, not runtimes")
         }
     }
 
@@ -329,8 +333,9 @@ struct List: AsyncParsableCommand {
         guard !shown.isEmpty else {
             throw Fail("nothing matches \(pattern ?? "")")
         }
-        let marks = await Compatibility.column(shown, requirements: requirements)
-        printTable(zip(releaseRows(shown), marks).map { $0 + [$1] })
+        let sorted = Releases.sorted(shown, by: order ?? .byVersion)
+        let marks = await Compatibility.column(sorted, requirements: requirements)
+        printTable(zip(releaseRows(sorted), marks).map { $0 + [$1] })
     }
 
     private var runtimes: RuntimeTarget? {
@@ -1074,6 +1079,19 @@ struct Remove: AsyncParsableCommand {
             ui.info(InfoAlert(stringLiteral:
                 "\(leftover.lastPathComponent) is incomplete, from an earlier remove; deleting the rest"))
             return leftover
+        }
+    }
+}
+
+// MARK: - Releases.Order + EnumerableFlag
+
+extension Releases.Order: EnumerableFlag {
+    static func help(for value: Self) -> ArgumentHelp? {
+        switch value {
+        case .byVersion:
+            "Highest version first (default)."
+        case .byReleaseDate:
+            "Newest release date first."
         }
     }
 }

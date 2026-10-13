@@ -140,6 +140,11 @@ enum Releases {
         case all
     }
 
+    enum Order: CaseIterable {
+        case byVersion
+        case byReleaseDate
+    }
+
     static let url = URL(string: "https://xcodereleases.com/data.json")!
 
     static var cacheFile: URL {
@@ -192,6 +197,18 @@ enum Releases {
             let newestFinal = releases.firstIndex(where: \.isFinal) ?? releases.endIndex
             return releases.enumerated().filter { $0.offset < newestFinal || $0.element.isFinal }.map(\.element)
         }
+    }
+
+    /// Newest first. `.byVersion` compares the number, then the kind (dp, beta, gm seed, rc, gm, final)
+    /// and its number; `.byReleaseDate` the release date, then the version. Ties keep their order.
+    static func sorted(_ releases: [Release], by order: Order) -> [Release] {
+        let kinds = ["dp", "beta", "gmseed", "rc", "gm"]
+        func key(_ r: Release) -> [Int] {
+            let date = order == .byReleaseDate ? [r.date.year, r.date.month, r.date.day] : []
+            let rank = r.isFinal ? kinds.count : r.kindName.flatMap(kinds.firstIndex(of:)) ?? -1
+            return date + Array((r.numberComponents + [0, 0]).prefix(3)) + [rank, r.kindNumber ?? 0]
+        }
+        return releases.sorted { key($1).lexicographicallyPrecedes(key($0)) }
     }
 
     /// The release each installed Xcode updates to: the newest of its major.minor, a final release for
@@ -298,7 +315,7 @@ struct Query {
             return (r, nil)
         }
         if latestBeta {
-            guard let r = releases.first(where: { !$0.isFinal }) else {
+            guard let r = Releases.sorted(releases, by: .byVersion).first(where: { !$0.isFinal }) else {
                 throw Fail("no prerelease found")
             }
             return (r, nil)

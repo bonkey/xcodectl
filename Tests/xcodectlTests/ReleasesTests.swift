@@ -43,6 +43,49 @@ final class ReleasesTests: XCTestCase {
         XCTAssertEqual(Releases.filter(hits, .beta).map(\.display), ["27.0-rc1", "26.5-rc1"])
     }
 
+    func testSortedByVersionOrdersByNumberThenKind() {
+        let releases = [
+            makeRelease("27.1", "27A9275", (2026, 10, 5), kind: .init(rc: 1)),
+            makeRelease("27.2", "27B5028f", (2026, 9, 28), kind: .init(beta: 2)),
+            makeRelease("27.0.1", "27A300", (2026, 9, 25)),
+            makeRelease("27.1", "27A9269", (2026, 9, 18), kind: .init(beta: 1)),
+            makeRelease("27.2", "27B5019j", (2026, 9, 16), kind: .init(beta: 1)),
+            makeRelease("27", "27A266a", (2026, 9, 14)),
+            makeRelease("27.0.0", "27A266a", (2026, 9, 9), kind: .init(rc: 1)),
+            makeRelease("27.0", "27A250", (2026, 8, 30), kind: .init(beta: 3)),
+            makeRelease("12.0", "12A7208", (2020, 9, 16), kind: .init(gm: true)),
+            makeRelease("12.0", "12A7209", (2020, 9, 15), kind: .init(gmSeed: 1)),
+        ]
+        XCTAssertEqual(
+            Releases.sorted(releases, by: .byVersion).map(\.display),
+            [
+                "27.2-beta2", "27.2-beta1", "27.1-rc1", "27.1-beta1", "27.0.1", "27", "27.0.0-rc1", "27.0-beta3",
+                "12.0-gm", "12.0-gmseed1",
+            ])
+    }
+
+    func testLatestBetaTakesTheHighestVersion() throws {
+        let releases = [
+            makeRelease("27.1", "27A9275", (2026, 10, 5), kind: .init(rc: 1)),
+            makeRelease("27.2", "27B5028f", (2026, 9, 28), kind: .init(beta: 2)),
+            makeRelease("27.0", "27A266a", (2026, 9, 14)),
+        ]
+        XCTAssertEqual(try Query("latest-beta").resolve(in: releases).release.display, "27.2-beta2")
+    }
+
+    /// data.json serves a new major's first beta above older finals released after it.
+    func testSortedByReleaseDateOrdersByDateThenVersion() {
+        let releases = [
+            makeRelease("26.6", "17F109", (2026, 6, 8), kind: .init(rc: 1)),
+            makeRelease("27.0", "27A5218g", (2026, 6, 8), kind: .init(beta: 1)),
+            makeRelease("26.6", "17F113", (2026, 6, 25)),
+            makeRelease("26.5", "17F42", (2026, 5, 11)),
+        ]
+        XCTAssertEqual(
+            Releases.sorted(releases, by: .byReleaseDate).map(\.display),
+            ["26.6", "27.0-beta1", "26.6-rc1", "26.5"])
+    }
+
     /// data.json order: newest first.
     private let stableNewest = [
         makeRelease("27.0", "27A266a", (2026, 9, 14)),
