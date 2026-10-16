@@ -433,18 +433,45 @@ enum SimCtl {
     ///
     /// simctl returns while the runtime is still in `Deleting` and the asset is still on disk, so
     /// wait for the registration to go; only then does its disk space reflect what actually happened.
+    ///
+    /// SimDiskImageError 30 means the registration is gone and only the asset purge is in doubt.
+    /// simdiskimaged looks for the payload before mobileassetd has finished removing it, and can
+    /// misread a removed one, so the asset directory is checked here instead: a purge still in flight
+    /// gets a short wait, and only an asset that stays is a failure.
     static func delete(_ runtime: InstalledRuntime, timeout: TimeInterval = 300) throws {
-        try run(executable, ["runtime", "delete", runtime.identifier])
+        var assetInDoubt = false
+        do {
+            try run(executable, ["runtime", "delete", runtime.identifier])
+        } catch let error as Fail where isRemovedWithoutReclaimedAsset(error.description) {
+            assetInDoubt = true
+        }
         let deadline = Date().addingTimeInterval(timeout)
-        while Date() < deadline {
-            guard let pending = try? runtimes().first(where: { $0.identifier == runtime.identifier }),
-                  pending.state == "Deleting"
-            else {
-                return
+        while let pending = try? runtimes().first(where: { $0.identifier == runtime.identifier }),
+              pending.state == "Deleting"
+        {
+            guard Date() < deadline else {
+                throw Fail("`simctl runtime delete \(runtime.identifier)` is still running after \(Int(timeout))s")
             }
             Thread.sleep(forTimeInterval: 0.5)
         }
-        throw Fail("`simctl runtime delete \(runtime.identifier)` is still running after \(Int(timeout))s")
+        guard assetInDoubt, let asset = runtime.assetDirectory else {
+            return
+        }
+        let assetDeadline = Date().addingTimeInterval(30)
+        while FileManager.default.fileExists(atPath: asset.path) {
+            guard Date() < assetDeadline else {
+                throw Fail("CoreSimulator removed \(runtime.display) (\(runtime.build)) but not its "
+                    + "\(formatBytes(runtime.size)) asset at \(asset.path); run `xcrun simctl runtime scan-and-mount`, "
+                    + "then `xcodectl remove \(runtime.platform?.rawValue ?? "<platform>") \(runtime.build)` again")
+            }
+            Thread.sleep(forTimeInterval: 0.5)
+        }
+    }
+
+    /// simctl's SimDiskImageError 30: the registration is gone, only the MobileAsset purge is in doubt.
+    /// The code identifies it whatever the detail says; the phrase covers output without the code line.
+    static func isRemovedWithoutReclaimedAsset(_ message: String) -> Bool {
+        message.contains("SimDiskImageError, code=30)") || message.contains("did not reclaim its MobileAsset")
     }
 
     private static var executable: URL {

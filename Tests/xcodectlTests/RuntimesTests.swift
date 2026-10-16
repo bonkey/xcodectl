@@ -421,6 +421,33 @@ struct RuntimeInstallerTests {
     }
 }
 
+// MARK: - SimCtlDeleteTests
+
+struct SimCtlDeleteTests {
+    /// simctl's stderr as `runTool` hands it over: the registration is gone, only the asset is in doubt.
+    @Test func `removed without reclaimed asset recognises SimDiskImageError 30`() {
+        #expect(SimCtl.isRemovedWithoutReclaimedAsset("""
+        Error: An error was encountered processing the command (domain=com.apple.CoreSimulator.simdiskimaged.SimDiskImageError, code=30):
+        Removed the runtime, but did not reclaim its MobileAsset: /System/Library/AssetsV2/com_apple_MobileAsset_iOSSimulatorRuntime/4266289161b54ac4ce863602d1cfefece9db1349.asset/AssetData/
+        Run 'xcrun simctl runtime scan-and-mount' to re-register the runtime, then delete it again.
+        """))
+    }
+
+    /// The timed-out purge variant carries the same code with other words.
+    @Test func `removed without reclaimed asset recognises the code without the phrase`() {
+        #expect(SimCtl.isRemovedWithoutReclaimedAsset("""
+        Error: An error was encountered processing the command (domain=com.apple.CoreSimulator.simdiskimaged.SimDiskImageError, code=30):
+        Timed out waiting for the Mobile Asset purge of /System/Library/AssetsV2/x.asset/AssetData/
+        """))
+    }
+
+    @Test func `removed without reclaimed asset ignores other simctl errors`() {
+        #expect(!SimCtl.isRemovedWithoutReclaimedAsset(
+            "Error Domain=SimDiskImageErrorDomain Code=9 \"Duplicate of image at /Library/...\""))
+        #expect(!SimCtl.isRemovedWithoutReclaimedAsset("Error Domain=NSPOSIXErrorDomain Code=22"))
+    }
+}
+
 // MARK: - RuntimeSelectionTests
 
 struct RuntimeSelectionTests {

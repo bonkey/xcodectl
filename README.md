@@ -466,7 +466,9 @@ exits 1 when not (`--json` adds `signedIn` and the reason on stdout). When it ha
   removed; `simctl runtime scan-and-mount` right after the add clears it. Removal is
   `simctl runtime delete`, which frees the asset behind a runtime only once the last registration
   referencing it is gone and says nothing when it skips that, so the tool waits for the deletion to
-  finish and then reports whether the space actually came back.
+  finish and then reports whether the space actually came back. When simctl reports the runtime removed
+  but its asset not reclaimed (SimDiskImageError 30), the tool checks the asset directory itself, waits
+  briefly for a purge still in flight, and fails only if the asset really stays.
 
 Files: `~/.xcodectl/cache/` (downloads in flight, a runtime image being added, cached version list,
 system requirements page and simulator runtime index) and, only during such an install,
