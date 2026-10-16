@@ -124,6 +124,11 @@ struct Release: Decodable {
         numberComponents.first ?? 0
     }
 
+    /// major.minor.patch as three numbers, for comparing versions.
+    var versionKey: [Int] {
+        Array((numberComponents + [0, 0]).prefix(3))
+    }
+
     var dateString: String {
         String(format: "%04d-%02d-%02d", date.year, date.month, date.day)
     }
@@ -174,14 +179,37 @@ enum Releases {
             .filter { $0.name == "Xcode" && $0.downloadURL != nil }
     }
 
-    /// Default `list` set: the two latest majors with a final release. `.current` shows their finals
-    /// plus every prerelease newer than the newest final, so a running beta cycle appears and old
-    /// betas and rcs of shipped versions do not. `.stable` / `.beta` keep one kind only.
-    static func defaultListing(_ releases: [Release], _ kind: Filter = .current) -> [Release] {
+    /// Default `list` set: the newest release of each minor of the newest major with a final release,
+    /// the newest release of the major before it, and every Xcode whose build is in `installed`.
+    /// `.current` shows finals plus the prereleases of a higher version than the newest final, so a
+    /// running beta cycle appears and betas and rcs of shipped versions do not. `.stable` / `.beta`
+    /// keep one kind only, of the installed ones too.
+    static func defaultListing(
+        _ releases: [Release],
+        _ kind: Filter = .current,
+        installed: [String] = [])
+        -> [Release]
+    {
         let finalMajors = Set(releases.filter(\.isFinal).map(\.major))
         let shownMajors = finalMajors.sorted(by: >).prefix(2)
+        let newestMajor = shownMajors.first ?? 0
         let lowestMajor = shownMajors.last ?? 0
-        return filter(releases.filter { $0.major >= lowestMajor }, kind)
+        var newest: [[Int]: Release] = [:]
+        for r in sorted(filter(releases.filter { $0.major >= lowestMajor }, kind), by: .byVersion) {
+            let line = r.major < newestMajor ? [r.major] : Array((r.numberComponents + [0]).prefix(2))
+            if newest[line] == nil {
+                newest[line] = r
+            }
+        }
+        let builds = Set(installed.map { $0.lowercased() })
+        let own = releases.filter { builds.contains($0.build.lowercased()) }
+        // A release candidate and its final share a build; the final stands for the installed app.
+        let ownFinals = Set(own.filter(\.isFinal).map { $0.build.lowercased() })
+        let ownRows = filter(
+            own.filter { $0.isFinal || !ownFinals.contains($0.build.lowercased()) },
+            kind == .current ? .all : kind)
+        let keep = Set((Array(newest.values) + ownRows).map(\.display))
+        return releases.filter { keep.contains($0.display) }
     }
 
     /// Applies a `Filter` to any release list (newest first, as data.json serves it).
@@ -194,8 +222,12 @@ enum Releases {
         case .beta:
             return releases.filter { !$0.isFinal }
         case .current:
-            let newestFinal = releases.firstIndex(where: \.isFinal) ?? releases.endIndex
-            return releases.enumerated().filter { $0.offset < newestFinal || $0.element.isFinal }.map(\.element)
+            // By version, not position: data.json is ordered by date, and a final can ship after a
+            // beta of the next version.
+            let newestFinal = releases.filter(\.isFinal).map(\.versionKey).max { $0.lexicographicallyPrecedes($1) }
+            return releases.filter { r in
+                r.isFinal || newestFinal.map { $0.lexicographicallyPrecedes(r.versionKey) } ?? true
+            }
         }
     }
 
@@ -206,7 +238,7 @@ enum Releases {
         func key(_ r: Release) -> [Int] {
             let date = order == .byDate ? [r.date.year, r.date.month, r.date.day] : []
             let rank = r.isFinal ? kinds.count : r.kindName.flatMap(kinds.firstIndex(of:)) ?? -1
-            return date + Array((r.numberComponents + [0, 0]).prefix(3)) + [rank, r.kindNumber ?? 0]
+            return date + r.versionKey + [rank, r.kindNumber ?? 0]
         }
         return releases.sorted { key($1).lexicographicallyPrecedes(key($0)) }
     }

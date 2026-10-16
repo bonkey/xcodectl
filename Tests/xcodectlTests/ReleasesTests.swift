@@ -9,32 +9,52 @@ import Testing
 // MARK: - ReleasesTests
 
 struct ReleasesTests {
-    @Test func `default listing shows the two latest stable majors without old prereleases`() {
-        #expect(Releases.defaultListing(stableNewest).map(\.display) == ["27.0", "26.6", "26.5"])
+    /// Every minor of the newest major, the newest release of the major before it, one row per minor.
+    @Test func `default listing shows the newest major by minor and the newest of the one before`() {
+        #expect(Releases.defaultListing(stableNewest).map(\.display) == ["27.0", "26.6"])
     }
 
-    @Test func `default listing adds prereleases newer than the latest stable`() {
+    @Test func `default listing adds the newest prerelease newer than the latest stable`() {
+        #expect(Releases.defaultListing(betaNewest).map(\.display) == ["28.0-beta2", "27.1", "27.0", "26.6"])
+    }
+
+    /// data.json is ordered by date, and a final can ship after a beta of the next version; the versions
+    /// decide which prereleases are newer, not the dates. A patch stands for its minor.
+    @Test func `default listing keeps a higher beta released before the newest final`() {
         #expect(
-            Releases.defaultListing(betaNewest).map(\.display) ==
-                ["28.0-beta2", "28.0-beta1", "27.1", "27.0", "26.6"])
+            Releases.defaultListing(finalAfterBeta).map(\.display) ==
+                ["27.1", "27.2-beta3", "27.0.1", "26.6"])
+    }
+
+    /// An installed Xcode always shows, whether its major is older than the shown ones or it is a
+    /// prerelease of a version that has shipped; the final of an installed build stands for it.
+    @Test func `default listing adds installed Xcodes`() {
+        let installed = ["25E301", "27a9269", "27A9275"]
+        #expect(
+            Releases.defaultListing(finalAfterBeta, installed: installed).map(\.display) ==
+                ["27.1", "27.2-beta3", "27.0.1", "27.1-beta1", "26.6", "25.4"])
+        #expect(
+            Releases.defaultListing(finalAfterBeta, .stable, installed: installed).map(\.display) ==
+                ["27.1", "27.0.1", "26.6", "25.4"])
+        #expect(
+            Releases.defaultListing(finalAfterBeta, .beta, installed: installed).map(\.display) ==
+                ["27.2-beta3", "27.1-rc1", "27.1-beta1"])
     }
 
     /// A patch of the old major can be released after the new major; the majors decide, not the dates.
     @Test func `default listing keeps the highest major when an older major is newer`() {
         let releases = [makeRelease("26.7", "26G22", (2026, 10, 1))] + stableNewest
-        #expect(Releases.defaultListing(releases).map(\.display) == ["26.7", "27.0", "26.6", "26.5"])
+        #expect(Releases.defaultListing(releases).map(\.display) == ["26.7", "27.0"])
     }
 
     @Test func `stable listing drops every prerelease`() {
         #expect(Releases.defaultListing(betaNewest, .stable).map(\.display) == ["27.1", "27.0", "26.6"])
-        #expect(Releases.defaultListing(stableNewest, .stable).map(\.display) == ["27.0", "26.6", "26.5"])
+        #expect(Releases.defaultListing(stableNewest, .stable).map(\.display) == ["27.0", "26.6"])
     }
 
-    @Test func `beta listing shows only prereleases of the shown majors`() {
+    @Test func `beta listing shows the newest prerelease of each shown minor`() {
         #expect(Releases.defaultListing(stableNewest, .beta).map(\.display) == ["27.0-rc1", "26.5-rc1"])
-        #expect(
-            Releases.defaultListing(betaNewest, .beta).map(\.display) ==
-                ["28.0-beta2", "28.0-beta1", "27.1-rc1"])
+        #expect(Releases.defaultListing(betaNewest, .beta).map(\.display) == ["28.0-beta2", "27.1-rc1"])
     }
 
     @Test func `filter narrows search results`() throws {
@@ -94,6 +114,18 @@ struct ReleasesTests {
         makeRelease("26.5", "26E62", (2026, 6, 23), kind: .init(rc: 1)),
         makeRelease("25.4", "25E301", (2025, 7, 2)),
         makeRelease("25.4", "25E299", (2025, 6, 25), kind: .init(rc: 1)),
+    ]
+
+    private let finalAfterBeta = [
+        makeRelease("27.1", "27A9275", (2026, 10, 15)),
+        makeRelease("27.2", "27B5038j", (2026, 10, 14), kind: .init(beta: 3)),
+        makeRelease("27.1", "27A9275", (2026, 10, 5), kind: .init(rc: 1)),
+        makeRelease("27.2", "27B5028f", (2026, 9, 28), kind: .init(beta: 2)),
+        makeRelease("27.0.1", "27A400", (2026, 9, 22)),
+        makeRelease("27.1", "27A9269", (2026, 9, 18), kind: .init(beta: 1)),
+        makeRelease("27.0", "27A266a", (2026, 9, 14)),
+        makeRelease("26.6", "26F71", (2026, 8, 12)),
+        makeRelease("25.4", "25E301", (2025, 7, 2)),
     ]
 
     private let betaNewest = [

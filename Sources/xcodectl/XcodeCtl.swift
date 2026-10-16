@@ -297,8 +297,9 @@ struct List: AsyncParsableCommand {
         CommandConfiguration(
             abstract: "Available Xcode versions (two latest majors; a regex searches all), or simulator runtimes.",
             discussion: """
-            Without a regex: finals of the two latest majors, plus any prerelease newer than the newest \
-            final. --stable keeps finals only, --beta keeps prereleases only. A regex searches every \
+            Without a regex: the newest release of each minor of the newest major, the newest release of \
+            the major before it, any prerelease newer than the newest final, and every installed Xcode. \
+            --stable keeps finals only, --beta keeps prereleases only. A regex searches every \
             release; --stable / --beta narrow the matches. Xcode versions list highest version first, or \
             newest first with --by-date. A platform (ios, tvos, watchos, visionos) or \
             `runtimes` lists the simulator runtimes Apple offers for this Mac instead: the newest major of \
@@ -351,7 +352,10 @@ struct List: AsyncParsableCommand {
             if let pattern {
                 try Releases.filter(Releases.search(all, regex: pattern), stable ? .stable : beta ? .beta : .all)
             } else {
-                Releases.defaultListing(all, stable ? .stable : beta ? .beta : .current)
+                Releases.defaultListing(
+                    all,
+                    stable ? .stable : beta ? .beta : .current,
+                    installed: Installed.all().map(\.build))
             }
         guard !shown.isEmpty || json else {
             throw Fail("nothing matches \(pattern ?? "")")
