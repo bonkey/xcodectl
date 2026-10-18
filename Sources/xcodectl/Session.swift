@@ -43,7 +43,7 @@ struct Cookie: Codable, Equatable {
 
 // MARK: - SessionExpired
 
-/// Apple no longer accepts the login session; only signing in again helps.
+/// No usable login session, stored or accepted by Apple; only signing in helps.
 struct SessionExpired: Error, LocalizedError, CustomStringConvertible {
     let description: String
 
@@ -115,12 +115,29 @@ enum Session {
         return try await ensureTicket(cookies, source: source, signIn: signIn)
     }
 
-    /// A session from `XCODECTL_SESSION` never signs in: the new session would go to the Keychain, and the
-    /// variable would still win on the next run.
     static func ensureTicket(_ cookies: [Cookie], source: Source, signIn: SignIn?) async throws -> [Cookie] {
         if let ticket = cookies.first(where: { $0.name == ticketCookie }), !ticket.isExpired {
             return cookies
         }
+        return try await verify(cookies, source: source, signIn: signIn)
+    }
+
+    /// What `auth status` and `auth export` check: the stored session, confirmed by Apple, with a fresh ticket.
+    /// Nothing stored signs in when `signIn` is set and otherwise throws `SessionExpired`.
+    static func verify(signIn: SignIn?) async throws -> (cookies: [Cookie], source: Source) {
+        guard let (cookies, source) = try load() else {
+            if let signIn {
+                return try await (signIn(), .keychain)
+            }
+            throw SessionExpired(description: "not signed in: run `xcodectl auth login`")
+        }
+        return try await (verify(cookies, source: source, signIn: signIn), source)
+    }
+
+    /// Asks Apple whether `cookies` still sign in and returns them with a fresh ticket, saved when they came from
+    /// the Keychain. `signIn` replaces an expired Keychain session. A session from `XCODECTL_SESSION` never signs
+    /// in: the new session would go to the Keychain, and the variable would still win on the next run.
+    static func verify(_ cookies: [Cookie], source: Source, signIn: SignIn?) async throws -> [Cookie] {
         do {
             let refreshed = try await refreshTicket(cookies)
             if source == .keychain {

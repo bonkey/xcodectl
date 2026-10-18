@@ -6,7 +6,8 @@ window, the tool keeps the session in your Keychain and does the rest.
 
 ```
 xcodectl auth login                sign in to Apple Developer (once)
-xcodectl auth status               whether Apple still accepts the session; exits 1 when not
+xcodectl auth status [--login]     whether Apple still accepts the session; exits 1 when not;
+                                   --login opens the sign-in window instead
 xcodectl list [<regex>]            newest major by minor, the one before, running betas, installed ones,
                                    and whether each runs on this Mac; --stable/--beta,
                                    --by-version/--by-date; regex searches all
@@ -30,7 +31,8 @@ xcodectl installed <platform>|runtimes
 xcodectl install <platform> [<ver>] [--xcode <ver>]
 xcodectl remove <platform>|runtimes [<ver>]
 xcodectl prune [--dry-run]         leftover runtime registrations that still hold disk space
-xcodectl auth export | import      move the session to a runner
+xcodectl auth export [--login] | import
+                                   move the session to a runner; both check it with Apple first
 xcodectl auth logout               delete the session from this Mac's Keychain
 ```
 
@@ -375,8 +377,10 @@ only for the Keychain session, not for `XCODECTL_SESSION`; `--no-autologin` make
 
 ## CI (self-hosted runner)
 
-On your Mac: `xcodectl auth export | pbcopy`. On the runner, once:
-`pbpaste | xcodectl auth import` (stores it in that runner's Keychain). Then in the job:
+On your Mac: `xcodectl auth export | pbcopy`. It asks Apple whether the session still holds and
+prints it with a fresh download ticket, or fails; `--login` opens the sign-in window in that case
+and prints the new session. On the runner, once: `pbpaste | xcodectl auth import` checks the
+blob with Apple the same way and stores it in that runner's Keychain. Then in the job:
 
 ```
 xcodectl install 26.6 --select
@@ -389,8 +393,10 @@ so `auth import` and `install` fail with "User interaction is not allowed". Run
 `security unlock-keychain` in that ssh session first, do the import from a GUI session (Screen
 Sharing), or use `XCODECTL_SESSION`. Runners launched in the logged-in session are not affected.
 Apple's login session lasts weeks; `xcodectl auth status` asks Apple whether it still holds and
-exits 1 when not (`--json` adds `signedIn` and the reason on stdout). When it has expired, run
-`auth login` and export again.
+exits 1 when not (`--json` adds `signedIn` and the reason on stdout). When it has expired,
+`xcodectl auth export --login | pbcopy` signs you in again and copies the new session in one go;
+`auth status --login` does the same without printing it. The window opens only when someone is at
+the terminal and only for the Keychain session, not for `XCODECTL_SESSION`.
 
 ## How it works
 

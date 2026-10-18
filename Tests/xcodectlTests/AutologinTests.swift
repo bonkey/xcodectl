@@ -64,6 +64,32 @@ struct AutologinTests {
         }
     }
 
+    @Test func `verify signs an expired Keychain session in`() async throws {
+        let fresh = [makeCookie("myacinfo"), makeCookie("ADCDownloadAuth", expires: Date() + 3600)]
+        var calls = 0
+        let result = try await Session.verify([], source: .keychain) {
+            calls += 1
+            return fresh
+        }
+        #expect(calls == 1)
+        #expect(result == fresh)
+    }
+
+    @Test func `verify without a sign-in throws`() async {
+        await #expect(throws: SessionExpired.self) {
+            try await Session.verify([], source: .keychain, signIn: nil)
+        }
+    }
+
+    @Test func `verify never signs an environment session in`() async {
+        await #expect(throws: SessionExpired.self) {
+            try await Session.verify([], source: .environment) {
+                Issue.record("signed in for an XCODECTL_SESSION session")
+                return []
+            }
+        }
+    }
+
     private func makeCookie(_ name: String, expires: Date? = nil) -> Cookie {
         var properties: [HTTPCookiePropertyKey: Any] = [.name: name, .value: "v", .domain: ".apple.com", .path: "/"]
         if let expires {

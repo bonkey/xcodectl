@@ -30,6 +30,9 @@ struct XcodeCtl: AsyncParsableCommand {
 }
 
 let ui = Noora()
+/// Noora on stderr, for commands whose stdout is data (a session blob, JSON).
+let stderrUI = Noora(
+    standardPipelines: StandardPipelines(output: StandardErrorPipeline(), error: StandardErrorPipeline()))
 
 // MARK: - Choice
 
@@ -182,7 +185,8 @@ struct Login: AsyncParsableCommand {
         discussion: "Two-factor codes and security keys (YubiKey etc.) work; the key is driven by the tool itself.")
 
     /// Signs in through the window and stores the session, download ticket included, in the Keychain.
-    static func signIn() async throws -> [Cookie] {
+    /// Progress goes to `ui`; `stderrUI` keeps stdout clean for a command that prints data.
+    static func signIn(ui: Noorable = xcodectl.ui) async throws -> [Cookie] {
         let window = await MainActor.run { LoginWindow() }
         let cookies = try await window.run().map(Cookie.init)
         let withTicket = try await ui.progressStep(message: "Fetching download ticket") { _ in
@@ -203,6 +207,18 @@ struct Login: AsyncParsableCommand {
         }
     }
 
+    /// The sign-in for `--login` on `auth status` and `auth export`; nil when it is off or nobody is at the terminal.
+    /// Stdout may be a pipe (`auth export --login | pbcopy`), so only stdin decides, and messages go to stderr.
+    static func login(_ enabled: Bool) -> Session.SignIn? {
+        guard enabled, isatty(STDIN_FILENO) == 1 else {
+            return nil
+        }
+        return {
+            stderrUI.info(InfoAlert(stringLiteral: "No valid Apple session; opening the sign-in window"))
+            return try await signIn(ui: stderrUI)
+        }
+    }
+
     func run() async throws {
         _ = try await Self.signIn()
         ui.success("Signed in. Runners: `xcodectl auth export` here, `xcodectl auth import` there.")
@@ -219,12 +235,13 @@ struct AuthCommand: AsyncParsableCommand {
         @Flag(help: "Print JSON; still exits 1 when not signed in.")
         var json = false
 
+        @Flag(help: "Open the sign-in window when the session is missing or expired (needs a terminal).")
+        var login = false
+
         func run() async throws {
-            guard let (cookies, source) = try Session.load() else {
-                try signedOut("not signed in: run `xcodectl auth login`")
-            }
+            let source: Session.Source
             do {
-                _ = try await Session.refreshTicket(cookies)
+                source = try await Session.verify(signIn: Login.login(login)).source
             } catch let expired as SessionExpired where json {
                 try signedOut(expired.description)
             }
@@ -246,28 +263,40 @@ struct AuthCommand: AsyncParsableCommand {
     }
 
     struct Export: AsyncParsableCommand {
-        static let configuration = CommandConfiguration(abstract: "Print the session as one base64 line.")
+        static let configuration =
+            CommandConfiguration(abstract: "Check the session with Apple and print it as one base64 line.")
+
+        @Flag(help: "Open the sign-in window when the session is missing or expired (needs a terminal).")
+        var login = false
 
         func run() async throws {
-            guard let (cookies, _) = try Session.load() else {
-                throw Fail("not signed in: run `xcodectl auth login`")
-            }
+            let (cookies, _) = try await Session.verify(signIn: Login.login(login))
             try print(Session.encode(cookies))
         }
     }
 
     struct Import: AsyncParsableCommand {
-        static let configuration =
-            CommandConfiguration(abstract: "Read a base64 session from stdin into this machine's Keychain.")
+        static let configuration = CommandConfiguration(
+            abstract: "Check a base64 session from stdin with Apple and store it in this machine's Keychain.")
 
-        func run() async throws {
-            let blob = String(decoding: FileHandle.standardInput.readDataToEndOfFile(), as: UTF8.self)
+        static func store(_ blob: String) async throws {
             let cookies = try Session.decode(blob)
             guard cookies.contains(where: { $0.name == Session.loginCookie })
             else {
                 throw Fail("blob has no Apple login session")
             }
-            try Session.save(cookies)
+            let verified: [Cookie]
+            do {
+                verified = try await Session.refreshTicket(cookies)
+            } catch is SessionExpired {
+                throw Fail(
+                    "Apple no longer accepts this session: run `xcodectl auth login` and `auth export` again on your Mac")
+            }
+            try Session.save(verified)
+        }
+
+        func run() async throws {
+            try await Self.store(String(decoding: FileHandle.standardInput.readDataToEndOfFile(), as: UTF8.self))
             ui.success("Session stored in the Keychain.")
         }
     }

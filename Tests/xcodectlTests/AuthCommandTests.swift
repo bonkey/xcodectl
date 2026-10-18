@@ -39,6 +39,51 @@ struct AuthCommandTests {
         }
     }
 
+    @Test func `login is off unless asked`() throws {
+        #expect(try #require(XcodeCtl.parseAsRoot(["auth", "status"]) as? AuthCommand.Status).login == false)
+        #expect(try #require(XcodeCtl.parseAsRoot(["auth", "status", "--login"]) as? AuthCommand.Status).login)
+        #expect(try #require(XcodeCtl.parseAsRoot(["auth", "export"]) as? AuthCommand.Export).login == false)
+        #expect(try #require(XcodeCtl.parseAsRoot(["auth", "export", "--login"]) as? AuthCommand.Export).login)
+    }
+
+    /// Export asks Apple first; without the login cookie that fails before any request goes out.
+    @Test func `export without a login cookie fails with the expiry`() async throws {
+        try await withSession("[]") {
+            var export = try #require(XcodeCtl.parseAsRoot(["auth", "export"]) as? AuthCommand.Export)
+            await #expect(throws: SessionExpired.self) {
+                try await export.run()
+            }
+        }
+    }
+
+    /// `--login` still fails for an XCODECTL_SESSION session; `AutologinTests` pin that the window never opens for one.
+    @Test func `export with login keeps an environment session`() async throws {
+        try await withSession("[]") {
+            var export = try #require(XcodeCtl.parseAsRoot(["auth", "export", "--login"]) as? AuthCommand.Export)
+            await #expect(throws: SessionExpired.self) {
+                try await export.run()
+            }
+        }
+    }
+
+    @Test func `import rejects a blob without a login cookie`() async throws {
+        let error = try await #require(throws: Fail.self) {
+            try await AuthCommand.Import.store(Data("[]".utf8).base64EncodedString())
+        }
+        #expect("\(error)".contains("no Apple login session"), "\(error)")
+    }
+
+    /// An expired login cookie is refused before any request or Keychain write.
+    @Test func `import rejects an expired login cookie`() async throws {
+        let expired = """
+        [{"domain":".apple.com","path":"/","name":"myacinfo","value":"v","expires":0,"secure":true}]
+        """
+        let error = try await #require(throws: Fail.self) {
+            try await AuthCommand.Import.store(Data(expired.utf8).base64EncodedString())
+        }
+        #expect("\(error)".contains("auth export"), "\(error)")
+    }
+
     @Test func `the old command names are gone`() {
         #expect(throws: Error.self) { try XcodeCtl.parseAsRoot(["login"]) }
         #expect(throws: Error.self) { try XcodeCtl.parseAsRoot(["session", "export"]) }
