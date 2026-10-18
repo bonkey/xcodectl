@@ -8,7 +8,7 @@ import Foundation
 // MARK: - Fail
 
 /// One-line, actionable failure. Printed by ArgumentParser as `Error: <message>`, exit 1.
-struct Fail: Error, LocalizedError, CustomStringConvertible {
+struct Fail: Error, LocalizedError, CustomStringConvertible, Equatable {
     init(_ message: String) {
         description = message
     }

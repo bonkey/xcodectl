@@ -52,6 +52,7 @@ Sources/xcodectl/
   Runtimes.swift     simulator runtime catalog, install through xcodebuild or simctl, removal through simctl, runtimes an Xcode uses
   RuntimeAsset.swift asset server lookup of a cryptex runtime, checksum, AEA/AppleArchive expansion of its .aar (only file importing AppleArchive)
   Shell.swift        Fail error, paths, sudo(), runTool(), clipboard, small system helpers
+  Config.swift       config.toml parser, the keys of each command, merge into the parsed command, `config init` template
   Version.swift      `let version = "x.y.z"`, bumped by `just release`
 ```
 
@@ -94,6 +95,12 @@ Sources/xcodectl/
 - `--json` (`list`, `installed`, `auth status`) prints the table's facts as typed values and nothing
   else on stdout; nothing found is `[]`. Its keys are a contract for scripts and agents: renaming or
   removing one is a breaking change, and `JSONOutputTests` pins them.
+- Config file: every plain flag is a `Bool?` with `inversion: .prefixedNo`, named for what it turns on, so
+  nil means "not typed" and `Config` fills only those. A command's keys live in one `settings` list in
+  `Config.swift`, which drives the merge, `config init` and `config check` alike; the merge keeps a value
+  only if the command's own `validate()` still passes next to what was typed. Keys are a contract like the
+  JSON ones; `ConfigTests` pins the template. `upgrade` reads `[upgrade]` only; the `install` and `remove`
+  it runs inside do not read the file.
 - Installed Xcodes are matched by `Contents/version.plist` `ProductBuildVersion`, never by
   directory name, so apps installed by other tools resolve too.
 - Whether an Xcode runs on this Mac is extra: when Apple's system requirements page cannot be

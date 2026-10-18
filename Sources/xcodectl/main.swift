@@ -13,7 +13,7 @@ app.setActivationPolicy(.prohibited)
 
 Task.detached {
     do {
-        var command = try XcodeCtl.parseAsRoot()
+        var command = try XcodeCtl.parseConfigured()
         if var asyncCommand = command as? AsyncParsableCommand {
             try await asyncCommand.run()
         } else {

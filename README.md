@@ -36,11 +36,15 @@ xcodectl installed <platform>|runtimes
 xcodectl install <platform> [<ver>] [--xcode <ver>]
 xcodectl remove <platform>|runtimes [<ver>]
 xcodectl prune [--dry-run]         leftover runtime registrations that still hold disk space
+xcodectl config init | check       defaults for any flag in ~/.config/xcodectl/config.toml
 xcodectl auth export [--no-login] [--copy] | import [--paste]
                                    move the session to a runner; both check it with Apple first;
                                    --copy / --paste use the clipboard
 xcodectl auth logout               delete the session from this Mac's Keychain
 ```
+
+Every flag has an inverse (`--approve`/`--no-approve`, `--size`/`--no-size`, `--json`/`--no-json`),
+so a default from the config file can be turned back for one run.
 
 `<ver>` is forgiving: `26.1`, `27`, `27 rc`, `27-rc1`, `27 beta 3`, `27A266a`, `latest`,
 `latest-beta`. Omit it on `install`, `approve`, `select` for a picker and on `upgrade` for every
@@ -408,6 +412,36 @@ exits 1 when not (`--json` adds `signedIn` and the reason on stdout). When it ha
 `auth status` does the same without printing it. The window opens only when someone is at
 the terminal and only for the Keychain session, not for `XCODECTL_SESSION`.
 
+## Configuration
+
+`xcodectl config init` writes `~/.config/xcodectl/config.toml` (or the path in `XCODECTL_CONFIG`)
+with every key commented out, a `[table]` per command. Keys are the flags without `--`; a flag
+takes `true` or `false`, an option a quoted string. Keys before the first table reach every
+command that has them.
+
+```toml
+login = false            # never open the sign-in window: install, upgrade, auth status, auth export
+
+[install]
+approve = false          # install --no-approve
+clt = false
+runtimes = "ios,watchos"
+
+[list]
+order = "by-date"
+
+[release-notes]
+plain = true
+```
+
+A flag typed on the command line wins over its table, which wins over the shared keys. A value
+that does not fit the run is ignored: with `clt = false` under `[install]`, `xcodectl install ios`
+installs the runtime as if the key were not there. `upgrade` reads `[upgrade]` only; the `install`
+and `remove` it runs inside do not read the file.
+An unknown key or table, or a value a flag cannot take, fails every command that reads the file;
+`xcodectl config check` lists every problem, or every setting the file makes, and exits 1 when
+something is wrong.
+
 ## How it works
 
 - Versions and direct download URLs: `https://xcodereleases.com/data.json`.
@@ -487,5 +521,5 @@ the terminal and only for the Keychain session, not for `XCODECTL_SESSION`.
   briefly for a purge still in flight, and fails only if the asset really stays.
 
 Files: `~/.xcodectl/cache/` (downloads in flight, a runtime image being added, cached version list,
-system requirements page and simulator runtime index) and, only during such an install,
-`~/.xcodectl/tmp/`. Nothing else.
+system requirements page and simulator runtime index), only during such an install
+`~/.xcodectl/tmp/`, and `~/.config/xcodectl/config.toml` when `config init` wrote it. Nothing else.

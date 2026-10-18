@@ -25,6 +25,7 @@ struct XcodeCtl: AsyncParsableCommand {
             Select.self,
             Remove.self,
             Prune.self,
+            ConfigCommand.self,
         ])
 }
 
@@ -1584,6 +1585,62 @@ func removeRuntimes(_ runtimes: [InstalledRuntime]) async throws {
         ui.warning(WarningAlert(stringLiteral: "\(formatBytes(runtime.size)) stays on disk: another runtime "
                 + "registration still references this asset. `xcodectl installed runtimes` shows them all."))
     }
+}
+
+// MARK: - ConfigCommand
+
+struct ConfigCommand: ParsableCommand {
+    struct Init: ParsableCommand {
+        static let configuration = CommandConfiguration(
+            abstract: "Write the config file with every key commented out at its default.")
+
+        func run() throws {
+            let path = Config.path
+            guard !FileManager.default.fileExists(atPath: path.path) else {
+                throw Fail("\(path.path) exists; `xcodectl config check` reads it, delete it to start over")
+            }
+            try FileManager.default.createDirectory(
+                at: path.deletingLastPathComponent(),
+                withIntermediateDirectories: true)
+            try Config.template().write(to: path, atomically: true, encoding: .utf8)
+            ui.success(SuccessAlert(stringLiteral: "Wrote \(path.path)"))
+        }
+    }
+
+    struct Check: ParsableCommand {
+        static let configuration = CommandConfiguration(
+            abstract: "Read the config file back: every setting it makes, or what is wrong with it (exit 1).")
+
+        func run() throws {
+            let path = Config.path
+            guard let config = try Config.load() else {
+                throw Fail("no config at \(path.path); `xcodectl config init` writes one")
+            }
+            let problems = config.problems()
+            guard problems.isEmpty else {
+                for problem in problems {
+                    eprint(problem)
+                }
+                throw Fail("\(problems.count) problem\(problems.count == 1 ? "" : "s") in \(path.path)")
+            }
+            let settings = config.effectiveSettings()
+            for setting in settings {
+                print(setting)
+            }
+            ui.success(SuccessAlert(stringLiteral: settings.isEmpty
+                    ? "\(path.path) sets nothing; every key is commented out" : "\(path.path) is fine"))
+        }
+    }
+
+    static let configuration = CommandConfiguration(
+        commandName: "config",
+        abstract: "Defaults for flags and options in ~/.config/xcodectl/config.toml (or XCODECTL_CONFIG).",
+        discussion: """
+        A [table] per command, keys named like its flags without `--`: `approve = false` under [install] is \
+        `install --no-approve` unless --approve is typed. Keys before the first table reach every command that \
+        has them. A value that does not fit the run, such as `clt = false` for `install ios`, is ignored.
+        """,
+        subcommands: [Init.self, Check.self])
 }
 
 // MARK: - Prune
