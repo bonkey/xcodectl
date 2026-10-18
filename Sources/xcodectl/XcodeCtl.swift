@@ -232,24 +232,24 @@ struct AuthCommand: AsyncParsableCommand {
         static let configuration =
             CommandConfiguration(abstract: "Ask Apple whether the session is still signed in; exits 1 when not.")
 
-        @Flag(help: "Print JSON; still exits 1 when not signed in.")
-        var json = false
+        @Flag(inversion: .prefixedNo, help: "Print JSON; still exits 1 when not signed in.")
+        var json: Bool?
 
         @Flag(
             name: .customLong("login"),
             inversion: .prefixedNo,
             help: "Open the sign-in window when the session is missing or expired (needs a terminal; never with --json).")
-        var login = true
+        var login: Bool?
 
         func run() async throws {
             let source: Session.Source
             do {
                 // --json is for scripts: it reports the expiry instead of waiting on a window.
-                source = try await Session.verify(signIn: Login.login(login && !json)).source
-            } catch let expired as SessionExpired where json {
+                source = try await Session.verify(signIn: Login.login(login != false && json != true)).source
+            } catch let expired as SessionExpired where json == true {
                 try signedOut(expired.description)
             }
-            guard json else {
+            guard json == true else {
                 ui.success("Signed in (\(source == .keychain ? "Keychain" : Session.envKey)).")
                 return
             }
@@ -258,7 +258,7 @@ struct AuthCommand: AsyncParsableCommand {
 
         /// With `--json`, the reason goes to stdout as JSON and the exit code alone tells the failure.
         private func signedOut(_ reason: String) throws -> Never {
-            guard json else {
+            guard json == true else {
                 throw Fail(reason)
             }
             try printJSON(SessionJSON(signedIn: false, reason: reason))
@@ -274,15 +274,15 @@ struct AuthCommand: AsyncParsableCommand {
             name: .customLong("login"),
             inversion: .prefixedNo,
             help: "Open the sign-in window when the session is missing or expired (needs a terminal).")
-        var login = true
+        var login: Bool?
 
-        @Flag(help: "Copy the session to the clipboard instead of printing it.")
-        var copy = false
+        @Flag(inversion: .prefixedNo, help: "Copy the session to the clipboard instead of printing it.")
+        var copy: Bool?
 
         func run() async throws {
-            let (cookies, _) = try await Session.verify(signIn: Login.login(login))
+            let (cookies, _) = try await Session.verify(signIn: Login.login(login != false))
             let blob = try Session.encode(cookies)
-            guard copy else {
+            guard copy == true else {
                 print(blob)
                 return
             }
@@ -295,8 +295,8 @@ struct AuthCommand: AsyncParsableCommand {
         static let configuration = CommandConfiguration(
             abstract: "Check a base64 session from stdin (or the clipboard with --paste) with Apple and store it in the Keychain.")
 
-        @Flag(help: "Read the session from the clipboard instead of stdin.")
-        var paste = false
+        @Flag(inversion: .prefixedNo, help: "Read the session from the clipboard instead of stdin.")
+        var paste: Bool?
 
         static func store(_ blob: String) async throws {
             let cookies = try Session.decode(blob)
@@ -316,7 +316,7 @@ struct AuthCommand: AsyncParsableCommand {
 
         func run() async throws {
             let blob: String
-            if paste {
+            if paste == true {
                 guard let text = await Clipboard.paste(),
                       !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 else {
@@ -373,26 +373,26 @@ struct List: AsyncParsableCommand {
     """)
     var pattern: String?
 
-    @Flag(help: "Only final releases.")
-    var stable = false
+    @Flag(inversion: .prefixedNo, help: "Only final releases.")
+    var stable: Bool?
 
-    @Flag(help: "Only betas, rcs and other prereleases.")
-    var beta = false
+    @Flag(inversion: .prefixedNo, help: "Only betas, rcs and other prereleases.")
+    var beta: Bool?
 
-    @Flag(help: "Runtimes only: every version, not just the newest major of each platform.")
-    var all = false
+    @Flag(inversion: .prefixedNo, help: "Runtimes only: every version, not just the newest major of each platform.")
+    var all: Bool?
 
     @Flag
     var order: Releases.Order?
 
-    @Flag(help: "Print JSON instead of a table; nothing found is [].")
-    var json = false
+    @Flag(inversion: .prefixedNo, help: "Print JSON instead of a table; nothing found is [].")
+    var json: Bool?
 
     func validate() throws {
-        guard !(stable && beta) else {
+        guard !(stable == true && beta == true) else {
             throw Fail("--stable and --beta exclude each other")
         }
-        guard !all || runtimes != nil else {
+        guard all != true || runtimes != nil else {
             throw Fail("--all applies to runtimes, e.g. `xcodectl list ios --all`; a regex searches every Xcode")
         }
         guard order == nil || runtimes == nil else {
@@ -409,18 +409,20 @@ struct List: AsyncParsableCommand {
         let all = try await Releases.fetch()
         let shown: [Release] =
             if let pattern {
-                try Releases.filter(Releases.search(all, regex: pattern), stable ? .stable : beta ? .beta : .all)
+                try Releases.filter(
+                    Releases.search(all, regex: pattern),
+                    stable == true ? .stable : beta == true ? .beta : .all)
             } else {
                 Releases.defaultListing(
                     all,
-                    stable ? .stable : beta ? .beta : .current,
+                    stable == true ? .stable : beta == true ? .beta : .current,
                     installed: Installed.all().map(\.build))
             }
-        guard !shown.isEmpty || json else {
+        guard !shown.isEmpty || json == true else {
             throw Fail("nothing matches \(pattern ?? "")")
         }
         let sorted = Releases.sorted(shown, by: order ?? .byVersion)
-        if json {
+        if json == true {
             try await printJSON(releaseJSON(sorted, requirements: requirements))
             return
         }
@@ -435,14 +437,14 @@ struct List: AsyncParsableCommand {
     private func listRuntimes(_ platform: RuntimePlatform?) async throws {
         let catalog = try await Runtimes.fetch()
         let installed = (try? SimCtl.runtimes()) ?? []
-        let kind: Runtimes.Filter = stable ? .stable : beta ? .beta : all ? .all : .current
-        let shown = all
+        let kind: Runtimes.Filter = stable == true ? .stable : beta == true ? .beta : all == true ? .all : .current
+        let shown = all == true
             ? Runtimes.filter(catalog.filter { platform == nil || $0.platform == platform }, kind)
             : Runtimes.defaultListing(catalog, platform: platform, kind)
-        guard !shown.isEmpty || json else {
+        guard !shown.isEmpty || json == true else {
             throw Fail("no runtimes match")
         }
-        if json {
+        if json == true {
             try printJSON(runtimeJSON(shown, installed: installed))
             return
         }
@@ -468,15 +470,15 @@ struct ListInstalled: AsyncParsableCommand {
     @Argument(help: "ios, tvos, watchos, visionos or runtimes for the simulator runtimes. Omit for Xcode.")
     var runtimes: RuntimeTarget?
 
-    @Flag(help: "Skip sizing each Xcode, which reads every file in its bundle.")
-    var noSize = false
+    @Flag(inversion: .prefixedNo, help: "Size each Xcode, which reads every file in its bundle. Default: on.")
+    var size: Bool?
 
-    @Flag(help: "Print JSON instead of a table; nothing installed is [].")
-    var json = false
+    @Flag(inversion: .prefixedNo, help: "Print JSON instead of a table; nothing installed is [].")
+    var json: Bool?
 
     func validate() throws {
         if runtimes != nil {
-            try rejectXcodeOnly(["--no-size": noSize])
+            try rejectXcodeOnly(["--no-size": size != nil])
         }
     }
 
@@ -487,7 +489,7 @@ struct ListInstalled: AsyncParsableCommand {
         }
         let installed = Installed.all()
         guard !installed.isEmpty else {
-            guard json else {
+            guard json == true else {
                 throw Fail("no Xcode installed in /Applications")
             }
             try printJSON([InstalledXcodeJSON]())
@@ -508,12 +510,12 @@ struct ListInstalled: AsyncParsableCommand {
         }
         let active = Installed.activePath()?.standardizedFileURL.path
         var entries = zip(installed, used).map { (xcode: $0, size: Int64?.none, runtimes: $1) }
-        guard !noSize else {
+        guard size != false else {
             try show(entries, active: active)
             return
         }
         // Redrawing in place needs a terminal; a pipe, a CI log or --json gets the finished listing once.
-        let live = isInteractive && !json ? Renderer() : nil
+        let live = isInteractive && json != true ? Renderer() : nil
         let draw = { live?.render(
             tableLines(installedRows(entries, active: active, unknownSize: "…")).joined(separator: "\n"),
             standardPipeline: StandardOutputPipeline()) }
@@ -538,7 +540,7 @@ struct ListInstalled: AsyncParsableCommand {
         active: String?)
         throws
     {
-        if json {
+        if json == true {
             try printJSON(installedJSON(entries, active: active))
         } else {
             printTable(installedRows(entries, active: active))
@@ -547,10 +549,10 @@ struct ListInstalled: AsyncParsableCommand {
 
     private func listRuntimes(_ platform: RuntimePlatform?) throws {
         let installed = try SimCtl.runtimes().filter { platform == nil || $0.platform == platform }
-        guard !installed.isEmpty || json else {
+        guard !installed.isEmpty || json == true else {
             throw Fail("no \(platform?.display ?? "simulator") runtime installed")
         }
-        if json {
+        if json == true {
             try printJSON(registrationJSON(installed))
             return
         }
@@ -607,14 +609,16 @@ struct ReleaseNotesCommand: AsyncParsableCommand {
     @Argument(help: "A second version to compare the first with.")
     var other: String?
 
-    @Flag(help: "Print the Markdown as Apple serves it. Default: rendered for the terminal.")
-    var markdown = false
+    @Flag(inversion: .prefixedNo, help: "Print the Markdown as Apple serves it. Default: rendered for the terminal.")
+    var markdown: Bool?
 
-    @Flag(help: "Print plain text, without markup or colors; the default when the output is not a terminal.")
-    var plain = false
+    @Flag(
+        inversion: .prefixedNo,
+        help: "Print plain text, without markup or colors; the default when the output is not a terminal.")
+    var plain: Bool?
 
-    @Flag(help: "A summary for a developer of apps, written by a model.")
-    var abridged = false
+    @Flag(inversion: .prefixedNo, help: "A summary for a developer of apps, written by a model.")
+    var abridged: Bool?
 
     @Option(help: "Answer a question about the notes with a model, e.g. \"which macOS is required?\"")
     var ask: String?
@@ -635,13 +639,14 @@ struct ReleaseNotesCommand: AsyncParsableCommand {
     var model: String?
 
     func validate() throws {
-        guard [abridged, ask != nil, other != nil].filter(\.self).count <= 1 else {
+        guard [abridged == true, ask != nil, other != nil].filter(\.self).count <= 1 else {
             throw Fail("--abridged, --ask and a second version exclude each other")
         }
-        guard !(markdown && plain) else {
+        guard !(markdown == true && plain == true) else {
             throw Fail("--markdown and --plain exclude each other")
         }
-        guard abridged || ask != nil || (keyEnv == nil && provider == nil && baseURL == nil && model == nil) else {
+        guard abridged == true || ask != nil || (keyEnv == nil && provider == nil && baseURL == nil && model == nil)
+        else {
             throw Fail("--key-env, --provider, --base-url and --model need --abridged or --ask")
         }
     }
@@ -662,7 +667,7 @@ struct ReleaseNotesCommand: AsyncParsableCommand {
                 throw Fail("the release notes of Xcode \(release.display) and \(newer.display) do not differ")
             }
             show("# Xcode \(release.display) → \(newer.display) release notes\n\n\(changes)", diff: true)
-        } else if abridged || ask != nil {
+        } else if abridged == true || ask != nil {
             let backend = try ReleaseNotes.backend(HostedModel.resolve(
                 environment: ProcessInfo.processInfo.environment, keyEnv: keyEnv, provider: provider,
                 baseURL: baseURL, model: model))
@@ -683,9 +688,9 @@ struct ReleaseNotesCommand: AsyncParsableCommand {
 
     private func show(_ text: String, diff: Bool = false, compatibility: String? = nil) {
         let text = Compatibility.adding(compatibility, to: text)
-        if markdown {
+        if markdown == true {
             print(text)
-        } else if plain || isatty(STDOUT_FILENO) != 1 {
+        } else if plain == true || isatty(STDOUT_FILENO) != 1 {
             print(ReleaseNotes.plain(text))
         } else {
             // A blank line sets the notes off from the messages above them.
@@ -725,14 +730,18 @@ struct Install: AsyncParsableCommand {
     """)
     var versions: [String] = []
 
-    @Flag(help: "Skip `approve` (license, first launch; needs sudo). Default: approve after installing.")
-    var noApprove = false
+    @Flag(
+        inversion: .prefixedNo,
+        help: "Run `approve` after installing (license, first launch; needs sudo). Default: on.")
+    var approve: Bool?
 
-    @Flag(help: "Run `select` afterwards (needs sudo).")
-    var select = false
+    @Flag(inversion: .prefixedNo, help: "Run `select` afterwards (needs sudo).")
+    var select: Bool?
 
-    @Flag(help: "Skip upgrading the Command Line Tools to this version (Software Update, needs sudo).")
-    var noClt = false
+    @Flag(
+        inversion: .prefixedNo,
+        help: "Upgrade the Command Line Tools to this version (Software Update, needs sudo). Default: on.")
+    var clt: Bool?
 
     @Flag(
         name: .customLong("login"),
@@ -741,7 +750,7 @@ struct Install: AsyncParsableCommand {
         Open the sign-in window when the Apple session is missing or expired (only at a terminal). \
         A runtime needs it only when older than iOS 18.
         """)
-    var autologin = true
+    var autologin: Bool?
 
     @Option(
         name: .customLong("runtimes"),
@@ -763,9 +772,9 @@ struct Install: AsyncParsableCommand {
                 throw Fail("a runtime takes one version after the platform, e.g. `xcodectl install ios 26.0`")
             }
             try rejectXcodeOnly([
-                "--select": select,
-                "--no-approve": noApprove,
-                "--no-clt": noClt,
+                "--select": select != nil,
+                "--no-approve": approve != nil,
+                "--no-clt": clt != nil,
                 "--runtimes": runtimeSelection != nil,
             ])
             return
@@ -774,10 +783,10 @@ struct Install: AsyncParsableCommand {
             throw Fail("--xcode applies to runtimes, e.g. `xcodectl install ios --xcode 27.0`")
         }
         // Runtimes install through this Xcode's own xcodebuild, which an unapproved Xcode refuses to run.
-        guard runtimeSelection == nil || !noApprove else {
+        guard runtimeSelection == nil || approve != false else {
             throw Fail("--runtimes needs an approved Xcode; drop --no-approve")
         }
-        guard !select || versions.count <= 1 else {
+        guard select != true || versions.count <= 1 else {
             throw Fail("--select takes one version; run `xcodectl select` afterwards")
         }
     }
@@ -822,20 +831,20 @@ struct Install: AsyncParsableCommand {
 
         for release in releases {
             let xcode = xcodes[release.build]!
-            if !noApprove {
+            if approve != false {
                 try Installer.approve(xcode)
             }
-            if !noClt {
+            if clt != false {
                 Installer.upgradeCommandLineTools(for: release)
             }
             if let runtimeSelection {
                 try await installRuntimes(runtimeSelection, using: xcode)
             }
-            if select {
+            if select == true {
                 try Installer.select(xcode)
             }
         }
-        if !select {
+        if select != true {
             let version = releases.count == 1 ? releases[0].display : "<version>"
             ui.info(InfoAlert(stringLiteral: "next: `xcodectl select \(version)` to make it the active Xcode"))
         }
@@ -853,7 +862,7 @@ struct Install: AsyncParsableCommand {
                 + "(\(host.version)); see `xcodectl list \(platform.rawValue) --all`")
         }
         if let source = runtime.source {
-            try await installDiskImageRuntime(runtime, from: source, autologin: autologin, using: host)
+            try await installDiskImageRuntime(runtime, from: source, autologin: autologin ?? true, using: host)
             return
         }
         if runtime.installsFromAssetServer(onXcode: host.version) {
@@ -894,7 +903,7 @@ struct Install: AsyncParsableCommand {
         let xip = { (release: Release) in Paths.cache.appendingPathComponent(release.xipName) }
         let downloads = pending.map { releases[$0] }.filter { !FileManager.default.fileExists(atPath: xip($0).path) }
         if !downloads.isEmpty {
-            let cookies = try await Session.ensureTicket(signIn: Login.autologin(autologin))
+            let cookies = try await Session.ensureTicket(signIn: Login.autologin(autologin ?? true))
             let connections = Int(ProcessInfo.processInfo.environment["XCODECTL_CONNECTIONS"] ?? "") ?? Downloader
                 .defaultConnections
             let names = downloads.map { "Xcode \($0.display)" }.joined(separator: ", ")
@@ -978,38 +987,46 @@ struct Upgrade: AsyncParsableCommand {
         completion: .custom(completeInstalledVersion))
     var version: String?
 
-    @Flag(help: "Newest build of the same major.minor instead of the same major.")
-    var minor = false
+    @Flag(inversion: .prefixedNo, help: "Newest build of the same major.minor instead of the same major.")
+    var minor: Bool?
 
-    @Flag(help: "Keep the old Xcode and its runtimes installed; the active Xcode stays.")
-    var keep = false
+    @Flag(inversion: .prefixedNo, help: "Keep the old Xcode and its runtimes installed; the active Xcode stays.")
+    var keep: Bool?
 
-    @Flag(help: "Also move installed betas and rcs, to the newest build of their line, beta or final.")
-    var beta = false
+    @Flag(
+        inversion: .prefixedNo,
+        help: "Also move installed betas and rcs, to the newest build of their line, beta or final.")
+    var beta: Bool?
 
-    @Flag(help: "Skip `approve` (license, first launch; needs sudo). Default: approve after installing.")
-    var noApprove = false
+    @Flag(
+        inversion: .prefixedNo,
+        help: "Run `approve` after installing (license, first launch; needs sudo). Default: on.")
+    var approve: Bool?
 
-    @Flag(help: "Skip upgrading the Command Line Tools (Software Update, needs sudo).")
-    var noClt = false
+    @Flag(inversion: .prefixedNo, help: "Upgrade the Command Line Tools (Software Update, needs sudo). Default: on.")
+    var clt: Bool?
 
     @Flag(
         name: .customLong("login"),
         inversion: .prefixedNo,
         help: "Open the sign-in window when the Apple session is missing or expired (only at a terminal).")
-    var autologin = true
+    var autologin: Bool?
 
-    @Flag(help: "Only print what would be installed and removed.")
-    var dryRun = false
+    @Flag(inversion: .prefixedNo, help: "Only print what would be installed and removed.")
+    var dryRun: Bool?
 
     func run() async throws {
         let installed = try await targets()
         let releases = try await Releases.fetch()
-        var plan = Releases.upgrades(for: installed, in: releases, scope: minor ? .minor : .major, prereleases: beta)
-        if keep {
+        var plan = Releases.upgrades(
+            for: installed,
+            in: releases,
+            scope: minor == true ? .minor : .major,
+            prereleases: beta == true)
+        if keep == true {
             plan.removeAll { Installed.find(build: $0.to.build) != nil }
         }
-        let skipped = beta ? [] : installed.filter { xcode in
+        let skipped = beta == true ? [] : installed.filter { xcode in
             let own = releases.filter { $0.build.lowercased() == xcode.build.lowercased() }
             return !own.isEmpty && !own.contains(where: \.isFinal)
         }
@@ -1025,20 +1042,16 @@ struct Upgrade: AsyncParsableCommand {
         let wasActive = plan.map { $0.from.contains(where: Installed.isActive) }
         for (pair, active) in zip(plan, wasActive) {
             let olds = pair.from.map(\.name).joined(separator: ", ")
-            let then = keep ? "" : "; then removed" + (active ? ", \(pair.to.display) selected" : "")
+            let then = keep == true ? "" : "; then removed" + (active ? ", \(pair.to.display) selected" : "")
             ui.info(InfoAlert(stringLiteral: "\(olds) -> Xcode \(pair.to.display) \(pair.to.build)\(then)"))
         }
-        guard !dryRun else {
+        guard dryRun != true else {
             return
         }
         // With one target that replaces the active Xcode, `install --select` makes the switch itself.
-        let selectOnInstall = !keep && plan.count == 1 && wasActive[0]
-        try await Install
-            .parse(
-                plan.map(\.to.build) + (noApprove ? ["--no-approve"] : []) + (noClt ? ["--no-clt"] : [])
-                    + (autologin ? [] : ["--no-login"]) + (selectOnInstall ? ["--select"] : []))
-            .run()
-        guard !keep else {
+        let selectOnInstall = keep != true && plan.count == 1 && wasActive[0]
+        try await Install.parse(installArguments(plan.map(\.to.build), select: selectOnInstall)).run()
+        guard keep != true else {
             return
         }
         for (pair, active) in zip(plan, wasActive) {
@@ -1051,6 +1064,12 @@ struct Upgrade: AsyncParsableCommand {
                 try await Remove.parse([old.build]).run()
             }
         }
+    }
+
+    /// The `install` invocation for these builds, carrying the flags that were turned off.
+    func installArguments(_ builds: [String], select: Bool) -> [String] {
+        builds + (approve == false ? ["--no-approve"] : []) + (clt == false ? ["--no-clt"] : [])
+            + (autologin == false ? ["--no-login"] : []) + (select ? ["--select"] : [])
     }
 
     /// The installed Xcodes to upgrade: every one, or those matching the version: "27" is every 27.x,
@@ -1163,8 +1182,8 @@ struct Remove: AsyncParsableCommand {
     @Argument(help: "Runtime version or build, after a platform. Omit for a picker.")
     var runtimeVersion: String?
 
-    @Flag(help: "Keep the simulator runtimes this Xcode uses.")
-    var keepRuntimes = false
+    @Flag(inversion: .prefixedNo, help: "Keep the simulator runtimes this Xcode uses.")
+    var keepRuntimes: Bool?
 
     func validate() throws {
         guard let runtime = RuntimeTarget(argument: version) else {
@@ -1177,7 +1196,7 @@ struct Remove: AsyncParsableCommand {
         if let runtimeVersion, runtime.platform == nil {
             throw Fail("name the platform of runtime \(runtimeVersion), e.g. `xcodectl remove ios \(runtimeVersion)`")
         }
-        try rejectXcodeOnly(["--keep-runtimes": keepRuntimes])
+        try rejectXcodeOnly(["--keep-runtimes": keepRuntimes != nil])
     }
 
     func run() async throws {
@@ -1188,7 +1207,7 @@ struct Remove: AsyncParsableCommand {
         let path = try await target()
         let name = path.lastPathComponent
         let wasActive = Installed.isActive(path)
-        if !keepRuntimes {
+        if keepRuntimes != true {
             try await removeOwnRuntimes(of: path)
         }
         try await ui.progressStep(
@@ -1573,8 +1592,8 @@ struct Prune: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         abstract: "Delete simulator runtime registrations that are no longer usable but still take disk space.")
 
-    @Flag(help: "List what would go without deleting anything.")
-    var dryRun = false
+    @Flag(inversion: .prefixedNo, help: "List what would go without deleting anything.")
+    var dryRun: Bool?
 
     func run() async throws {
         let leftovers = try SimCtl.runtimes().filter { !$0.isReady }
@@ -1583,7 +1602,7 @@ struct Prune: AsyncParsableCommand {
             return
         }
         let total = leftovers.reduce(0) { $0 + $1.size }
-        guard !dryRun else {
+        guard dryRun != true else {
             printTable([["PLATFORM", "VERSION", "BUILD", "SIZE", "STATE"]] + leftovers.map {
                 [$0.platform?.display ?? "?", $0.version, $0.build, formatBytes($0.size), $0.state]
             })

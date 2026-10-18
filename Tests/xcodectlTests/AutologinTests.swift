@@ -9,14 +9,14 @@ import Testing
 struct AutologinTests {
     @Test func `install signs in by default`() throws {
         let install = try #require(XcodeCtl.parseAsRoot(["install", "26.6"]) as? Install)
-        #expect(install.autologin)
+        #expect(install.autologin != false)
     }
 
     @Test func `no autologin turns it off`() throws {
         let install = try #require(XcodeCtl.parseAsRoot(["install", "--no-login", "26.6"]) as? Install)
-        #expect(!install.autologin)
+        #expect(install.autologin == false)
         let upgrade = try #require(XcodeCtl.parseAsRoot(["upgrade", "--no-login"]) as? Upgrade)
-        #expect(!upgrade.autologin)
+        #expect(upgrade.autologin == false)
     }
 
     @Test func `the old flag name is gone`() {

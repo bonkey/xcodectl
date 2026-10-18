@@ -17,38 +17,65 @@ struct CommandGrammarTests {
             XcodeCtl.parseAsRoot(["install", "27.1", "--runtimes", "ios", "--select"]) as? Install)
         #expect(install.versions == ["27.1"])
         #expect(install.runtimeSelection?.platforms == [.ios])
-        #expect(install.select)
+        #expect(install.select == true)
     }
 
     @Test func `remove Xcode keeping runtimes`() throws {
         let remove = try #require(XcodeCtl.parseAsRoot(["remove", "27.1", "--keep-runtimes"]) as? Remove)
         #expect(remove.version == "27.1")
-        #expect(remove.keepRuntimes)
+        #expect(remove.keepRuntimes == true)
     }
 
     @Test func `upgrade takes one version, scope and beta flags`() throws {
         let all = try #require(XcodeCtl.parseAsRoot(["upgrade", "--beta", "--dry-run"]) as? Upgrade)
         #expect(all.version == nil)
-        #expect(all.beta)
-        #expect(all.dryRun)
-        #expect(!all.minor)
-        #expect(!all.keep)
+        #expect(all.beta == true)
+        #expect(all.dryRun == true)
+        #expect(all.minor == nil)
+        #expect(all.keep == nil)
         let one = try #require(XcodeCtl.parseAsRoot(["upgrade", "27", "--minor", "--keep"]) as? Upgrade)
         #expect(one.version == "27")
-        #expect(one.minor)
-        #expect(one.keep)
+        #expect(one.minor == true)
+        #expect(one.keep == true)
     }
 
     @Test func `list Xcodes by regex`() throws {
         let list = try #require(XcodeCtl.parseAsRoot(["list", "26\\.[45]", "--beta"]) as? List)
         #expect(list.pattern == "26\\.[45]")
-        #expect(list.beta)
+        #expect(list.beta == true)
     }
 
     @Test func `installed without sizes`() throws {
         let installed = try #require(XcodeCtl.parseAsRoot(["installed", "--no-size"]) as? ListInstalled)
-        #expect(installed.noSize)
+        #expect(installed.size == false)
         #expect(installed.runtimes == nil)
+    }
+
+    @Test func `every flag has its inverse`() throws {
+        let install = try #require(
+            XcodeCtl.parseAsRoot(["install", "27", "--approve", "--clt", "--no-select"]) as? Install)
+        #expect(install.approve == true)
+        #expect(install.clt == true)
+        #expect(install.select == false)
+        #expect(install.autologin == nil)
+        let installed = try #require(XcodeCtl.parseAsRoot(["installed", "--size", "--no-json"]) as? ListInstalled)
+        #expect(installed.size == true)
+        #expect(installed.json == false)
+        let upgrade = try #require(XcodeCtl.parseAsRoot(["upgrade", "--no-dry-run", "--no-keep"]) as? Upgrade)
+        #expect(upgrade.dryRun == false)
+        #expect(upgrade.keep == false)
+        let remove = try #require(XcodeCtl.parseAsRoot(["remove", "27", "--no-keep-runtimes"]) as? Remove)
+        #expect(remove.keepRuntimes == false)
+        let notes = try #require(XcodeCtl.parseAsRoot(["release-notes", "27", "--no-plain"]) as? ReleaseNotesCommand)
+        #expect(notes.plain == false)
+    }
+
+    @Test func `upgrade forwards only the flags turned off`() throws {
+        let plain = try #require(XcodeCtl.parseAsRoot(["upgrade"]) as? Upgrade)
+        #expect(plain.installArguments(["27A1"], select: true) == ["27A1", "--select"])
+        let off = try #require(
+            XcodeCtl.parseAsRoot(["upgrade", "--no-approve", "--no-clt", "--no-login"]) as? Upgrade)
+        #expect(off.installArguments(["27A1"], select: false) == ["27A1", "--no-approve", "--no-clt", "--no-login"])
     }
 
     @Test func `the information commands take JSON`() throws {
@@ -81,13 +108,13 @@ struct CommandGrammarTests {
         #expect(install.xcode == "27")
         #expect(throws: Never.self) { try XcodeCtl.parseAsRoot(["install", "tvos"]) }
         let older = try #require(XcodeCtl.parseAsRoot(["install", "ios", "17", "--no-login"]) as? Install)
-        #expect(!older.autologin)
+        #expect(older.autologin == false)
     }
 
     @Test func `list runtimes`() throws {
         let list = try #require(XcodeCtl.parseAsRoot(["list", "ios", "--all"]) as? List)
         #expect(list.pattern == "ios")
-        #expect(list.all)
+        #expect(list.all == true)
         #expect(throws: Never.self) { try XcodeCtl.parseAsRoot(["list", "runtimes", "--beta"]) }
     }
 
@@ -109,7 +136,7 @@ struct CommandGrammarTests {
 
     @Test func prune() throws {
         let prune = try #require(XcodeCtl.parseAsRoot(["prune", "--dry-run"]) as? Prune)
-        #expect(prune.dryRun)
+        #expect(prune.dryRun == true)
     }
 
     @Test func `options of the other kind are rejected`() {

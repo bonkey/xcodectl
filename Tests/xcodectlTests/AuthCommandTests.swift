@@ -20,13 +20,13 @@ struct AuthCommandTests {
 
     @Test func `export and import take the clipboard flags`() throws {
         let export = try #require(XcodeCtl.parseAsRoot(["auth", "export", "--copy"]) as? AuthCommand.Export)
-        #expect(export.copy)
+        #expect(export.copy == true)
         let plainExport = try #require(XcodeCtl.parseAsRoot(["auth", "export"]) as? AuthCommand.Export)
-        #expect(!plainExport.copy)
+        #expect(plainExport.copy != true)
         let `import` = try #require(XcodeCtl.parseAsRoot(["auth", "import", "--paste"]) as? AuthCommand.Import)
-        #expect(`import`.paste)
+        #expect(`import`.paste == true)
         let plainImport = try #require(XcodeCtl.parseAsRoot(["auth", "import"]) as? AuthCommand.Import)
-        #expect(!plainImport.paste)
+        #expect(plainImport.paste != true)
     }
 
     /// A session without Apple's login cookie fails before any request goes out.
@@ -51,10 +51,10 @@ struct AuthCommandTests {
     }
 
     @Test func `login is on unless turned off`() throws {
-        #expect(try #require(XcodeCtl.parseAsRoot(["auth", "status"]) as? AuthCommand.Status).login)
+        #expect(try #require(XcodeCtl.parseAsRoot(["auth", "status"]) as? AuthCommand.Status).login != false)
         #expect(try #require(XcodeCtl.parseAsRoot(["auth", "status", "--no-login"]) as? AuthCommand.Status)
             .login == false)
-        #expect(try #require(XcodeCtl.parseAsRoot(["auth", "export"]) as? AuthCommand.Export).login)
+        #expect(try #require(XcodeCtl.parseAsRoot(["auth", "export"]) as? AuthCommand.Export).login != false)
         #expect(try #require(XcodeCtl.parseAsRoot(["auth", "export", "--no-login"]) as? AuthCommand.Export)
             .login == false)
     }
