@@ -459,7 +459,6 @@ extension Install: Configurable {
         .flag("clt", \.clt, default: true),
         .flag("login", \.autologin, default: true),
         .option("runtimes", \.runtimeSelection, example: "all"),
-        .option("xcode", \.xcode, example: "27"),
     ]
 }
 
@@ -473,7 +472,6 @@ extension Upgrade: Configurable {
         .flag("approve", \.approve, default: true),
         .flag("clt", \.clt, default: true),
         .flag("login", \.autologin, default: true),
-        .flag("dry-run", \.dryRun, default: false),
     ]
 }
 
@@ -486,9 +484,3 @@ extension Remove: Configurable {
 }
 
 // MARK: - Prune + Configurable
-
-extension Prune: Configurable {
-    static let settings: [ConfigSetting<Prune>] = [
-        .flag("dry-run", \.dryRun, default: false),
-    ]
-}

@@ -95,8 +95,8 @@ Sources/xcodectl/
 - `--json` (`list`, `installed`, `auth status`) prints the table's facts as typed values and nothing
   else on stdout; nothing found is `[]`. Its keys are a contract for scripts and agents: renaming or
   removing one is a breaking change, and `JSONOutputTests` pins them.
-- Config file: every plain flag is a `Bool?` with `inversion: .prefixedNo`, named for what it turns on, so
-  nil means "not typed" and `Config` fills only those. A command's keys live in one `settings` list in
+- Config file: every configurable flag is a `Bool?` with `inversion: .prefixedNo`, named for what it turns on,
+  so nil means "not typed" and `Config` fills only those. `--dry-run` stays a plain flag: never a default. A command's keys live in one `settings` list in
   `Config.swift`, which drives the merge, `config init` and `config check` alike; the merge keeps a value
   only if the command's own `validate()` still passes next to what was typed. Keys are a contract like the
   JSON ones; `ConfigTests` pins the template. `upgrade` reads `[upgrade]` only; the `install` and `remove`

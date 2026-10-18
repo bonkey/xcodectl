@@ -43,8 +43,9 @@ xcodectl auth export [--no-login] [--copy] | import [--paste]
 xcodectl auth logout               delete the session from this Mac's Keychain
 ```
 
-Every flag has an inverse (`--approve`/`--no-approve`, `--size`/`--no-size`, `--json`/`--no-json`),
-so a default from the config file can be turned back for one run.
+Every flag the config file can set has an inverse (`--approve`/`--no-approve`, `--size`/`--no-size`,
+`--json`/`--no-json`), so a default from the file can be turned back for one run. `--dry-run` is
+never a default.
 
 `<ver>` is forgiving: `26.1`, `27`, `27 rc`, `27-rc1`, `27 beta 3`, `27A266a`, `latest`,
 `latest-beta`. Omit it on `install`, `approve`, `select` for a picker and on `upgrade` for every

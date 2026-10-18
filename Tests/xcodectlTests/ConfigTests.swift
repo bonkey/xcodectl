@@ -60,7 +60,7 @@ struct ConfigTests {
         bogus = true
         json = "yes"
         [update]
-        dry-run = true
+        keep = true
         [install]
         nope = true
         runtimes = "mars"
@@ -94,7 +94,6 @@ struct ConfigTests {
         # approve = true
         # beta = false
         # clt = true
-        # dry-run = false
         # json = false
         # login = true
 
@@ -135,7 +134,6 @@ struct ConfigTests {
         # clt = true
         # login = true
         # runtimes = "all"
-        # xcode = "27"
 
         [upgrade]
         # minor = false
@@ -144,13 +142,9 @@ struct ConfigTests {
         # approve = true
         # clt = true
         # login = true
-        # dry-run = false
 
         [remove]
         # keep-runtimes = false
-
-        [prune]
-        # dry-run = false
 
         """)
     }
@@ -221,7 +215,6 @@ struct ConfigTests {
         #expect(try command(["install", "27", "26"], "[install]\nselect = true", as: Install.self).select == nil)
         #expect(try command(["install", "27", "--runtimes", "all"], "[install]\napprove = false", as: Install.self)
             .approve == nil)
-        #expect(try command(["install", "27"], "[install]\nxcode = \"27\"", as: Install.self).xcode == nil)
         // Two config keys that exclude each other: the one listed first in the template wins.
         let conflicting: Install = try command(["install", "27"], "[install]\napprove = false\nruntimes = \"ios\"")
         #expect(conflicting.approve == false)

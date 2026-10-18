@@ -1013,8 +1013,8 @@ struct Upgrade: AsyncParsableCommand {
         help: "Open the sign-in window when the Apple session is missing or expired (only at a terminal).")
     var autologin: Bool?
 
-    @Flag(inversion: .prefixedNo, help: "Only print what would be installed and removed.")
-    var dryRun: Bool?
+    @Flag(help: "Only print what would be installed and removed.")
+    var dryRun = false
 
     func run() async throws {
         let installed = try await targets()
@@ -1046,7 +1046,7 @@ struct Upgrade: AsyncParsableCommand {
             let then = keep == true ? "" : "; then removed" + (active ? ", \(pair.to.display) selected" : "")
             ui.info(InfoAlert(stringLiteral: "\(olds) -> Xcode \(pair.to.display) \(pair.to.build)\(then)"))
         }
-        guard dryRun != true else {
+        guard !dryRun else {
             return
         }
         // With one target that replaces the active Xcode, `install --select` makes the switch itself.
@@ -1649,8 +1649,8 @@ struct Prune: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         abstract: "Delete simulator runtime registrations that are no longer usable but still take disk space.")
 
-    @Flag(inversion: .prefixedNo, help: "List what would go without deleting anything.")
-    var dryRun: Bool?
+    @Flag(help: "List what would go without deleting anything.")
+    var dryRun = false
 
     func run() async throws {
         let leftovers = try SimCtl.runtimes().filter { !$0.isReady }
@@ -1659,7 +1659,7 @@ struct Prune: AsyncParsableCommand {
             return
         }
         let total = leftovers.reduce(0) { $0 + $1.size }
-        guard dryRun != true else {
+        guard !dryRun else {
             printTable([["PLATFORM", "VERSION", "BUILD", "SIZE", "STATE"]] + leftovers.map {
                 [$0.platform?.display ?? "?", $0.version, $0.build, formatBytes($0.size), $0.state]
             })

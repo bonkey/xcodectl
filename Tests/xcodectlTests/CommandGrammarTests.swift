@@ -30,7 +30,7 @@ struct CommandGrammarTests {
         let all = try #require(XcodeCtl.parseAsRoot(["upgrade", "--beta", "--dry-run"]) as? Upgrade)
         #expect(all.version == nil)
         #expect(all.beta == true)
-        #expect(all.dryRun == true)
+        #expect(all.dryRun)
         #expect(all.minor == nil)
         #expect(all.keep == nil)
         let one = try #require(XcodeCtl.parseAsRoot(["upgrade", "27", "--minor", "--keep"]) as? Upgrade)
@@ -61,8 +61,7 @@ struct CommandGrammarTests {
         let installed = try #require(XcodeCtl.parseAsRoot(["installed", "--size", "--no-json"]) as? ListInstalled)
         #expect(installed.size == true)
         #expect(installed.json == false)
-        let upgrade = try #require(XcodeCtl.parseAsRoot(["upgrade", "--no-dry-run", "--no-keep"]) as? Upgrade)
-        #expect(upgrade.dryRun == false)
+        let upgrade = try #require(XcodeCtl.parseAsRoot(["upgrade", "--no-keep"]) as? Upgrade)
         #expect(upgrade.keep == false)
         let remove = try #require(XcodeCtl.parseAsRoot(["remove", "27", "--no-keep-runtimes"]) as? Remove)
         #expect(remove.keepRuntimes == false)
@@ -136,7 +135,7 @@ struct CommandGrammarTests {
 
     @Test func prune() throws {
         let prune = try #require(XcodeCtl.parseAsRoot(["prune", "--dry-run"]) as? Prune)
-        #expect(prune.dryRun == true)
+        #expect(prune.dryRun)
     }
 
     @Test func `options of the other kind are rejected`() {
