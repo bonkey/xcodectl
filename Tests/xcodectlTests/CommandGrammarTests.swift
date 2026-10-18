@@ -80,7 +80,7 @@ struct CommandGrammarTests {
         #expect(install.versions == ["ios", "26.0"])
         #expect(install.xcode == "27")
         #expect(throws: Never.self) { try XcodeCtl.parseAsRoot(["install", "tvos"]) }
-        let older = try #require(XcodeCtl.parseAsRoot(["install", "ios", "17", "--no-autologin"]) as? Install)
+        let older = try #require(XcodeCtl.parseAsRoot(["install", "ios", "17", "--no-login"]) as? Install)
         #expect(!older.autologin)
     }
 

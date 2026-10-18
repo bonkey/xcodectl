@@ -196,7 +196,8 @@ struct Login: AsyncParsableCommand {
         return withTicket
     }
 
-    /// The sign-in for `--autologin`; nil when it is off or nobody is at the terminal to use the window.
+    /// The sign-in for `--login` on `install` and `update`; nil when it is off or nobody is at the terminal to use the
+    /// window.
     static func autologin(_ enabled: Bool) -> Session.SignIn? {
         guard enabled, isInteractive else {
             return nil
@@ -208,7 +209,7 @@ struct Login: AsyncParsableCommand {
     }
 
     /// The sign-in for `--login` on `auth status` and `auth export`; nil when it is off or nobody is at the terminal.
-    /// Stdout may be a pipe (`auth export --login | pbcopy`), so only stdin decides, and messages go to stderr.
+    /// Stdout may be a pipe (`auth export | pbcopy`), so only stdin decides, and messages go to stderr.
     static func login(_ enabled: Bool) -> Session.SignIn? {
         guard enabled, isatty(STDIN_FILENO) == 1 else {
             return nil
@@ -235,13 +236,17 @@ struct AuthCommand: AsyncParsableCommand {
         @Flag(help: "Print JSON; still exits 1 when not signed in.")
         var json = false
 
-        @Flag(help: "Open the sign-in window when the session is missing or expired (needs a terminal).")
-        var login = false
+        @Flag(
+            name: .customLong("login"),
+            inversion: .prefixedNo,
+            help: "Open the sign-in window when the session is missing or expired (needs a terminal; never with --json).")
+        var login = true
 
         func run() async throws {
             let source: Session.Source
             do {
-                source = try await Session.verify(signIn: Login.login(login)).source
+                // --json is for scripts: it reports the expiry instead of waiting on a window.
+                source = try await Session.verify(signIn: Login.login(login && !json)).source
             } catch let expired as SessionExpired where json {
                 try signedOut(expired.description)
             }
@@ -266,8 +271,11 @@ struct AuthCommand: AsyncParsableCommand {
         static let configuration =
             CommandConfiguration(abstract: "Check the session with Apple and print it as one base64 line.")
 
-        @Flag(help: "Open the sign-in window when the session is missing or expired (needs a terminal).")
-        var login = false
+        @Flag(
+            name: .customLong("login"),
+            inversion: .prefixedNo,
+            help: "Open the sign-in window when the session is missing or expired (needs a terminal).")
+        var login = true
 
         func run() async throws {
             let (cookies, _) = try await Session.verify(signIn: Login.login(login))
@@ -705,6 +713,7 @@ struct Install: AsyncParsableCommand {
     var noClt = false
 
     @Flag(
+        name: .customLong("login"),
         inversion: .prefixedNo,
         help: """
         Open the sign-in window when the Apple session is missing or expired (only at a terminal). \
@@ -963,6 +972,7 @@ struct Upgrade: AsyncParsableCommand {
     var noClt = false
 
     @Flag(
+        name: .customLong("login"),
         inversion: .prefixedNo,
         help: "Open the sign-in window when the Apple session is missing or expired (only at a terminal).")
     var autologin = true
@@ -1004,7 +1014,7 @@ struct Upgrade: AsyncParsableCommand {
         try await Install
             .parse(
                 plan.map(\.to.build) + (noApprove ? ["--no-approve"] : []) + (noClt ? ["--no-clt"] : [])
-                    + (autologin ? [] : ["--no-autologin"]) + (selectOnInstall ? ["--select"] : []))
+                    + (autologin ? [] : ["--no-login"]) + (selectOnInstall ? ["--select"] : []))
             .run()
         guard !keep else {
             return
@@ -1573,7 +1583,7 @@ struct DownloadURL: AsyncParsableCommand {
     @Argument var url: String
     @Argument var destination: String
     @Flag var withTicket = false
-    @Flag(inversion: .prefixedNo) var autologin = true
+    @Flag(name: .customLong("login"), inversion: .prefixedNo) var autologin = true
 
     func run() async throws {
         guard let url = URL(string: url) else {

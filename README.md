@@ -6,19 +6,19 @@ window, the tool keeps the session in your Keychain and does the rest.
 
 ```
 xcodectl auth login                sign in to Apple Developer (once)
-xcodectl auth status [--login]     whether Apple still accepts the session; exits 1 when not;
-                                   --login opens the sign-in window instead
+xcodectl auth status [--no-login]  whether Apple still accepts the session; exits 1 when not;
+                                   otherwise the sign-in window opens, --no-login fails instead
 xcodectl list [<regex>]            newest major by minor, the one before, running betas, installed ones,
                                    and whether each runs on this Mac; --stable/--beta,
                                    --by-version/--by-date; regex searches all
 xcodectl installed [--no-size]     what is in /Applications with its size and the runtimes each Xcode uses
 xcodectl release-notes [<ver>] [<ver2>] [--markdown | --plain] [--abridged] [--ask "<question>"]
                                    notes rendered in the terminal; two versions: what changed; no login needed
-xcodectl install [<ver>...] [--select] [--no-approve] [--no-clt] [--no-autologin]
+xcodectl install [<ver>...] [--select] [--no-approve] [--no-clt] [--no-login]
                  [--runtimes all|ios,watchos,...]
                                    several versions download and expand in parallel; so do separate runs
 xcodectl upgrade [<ver>] [--minor] [--keep] [--beta] [--dry-run]
-                 [--no-approve] [--no-clt] [--no-autologin]
+                 [--no-approve] [--no-clt] [--no-login]
                                    newest release of each installed major (27.0 -> 27.2), then the
                                    old one is removed and the new one selected if the old one was;
                                    --minor: newest build of the major.minor (27.0 -> 27.0.1);
@@ -36,7 +36,7 @@ xcodectl installed <platform>|runtimes
 xcodectl install <platform> [<ver>] [--xcode <ver>]
 xcodectl remove <platform>|runtimes [<ver>]
 xcodectl prune [--dry-run]         leftover runtime registrations that still hold disk space
-xcodectl auth export [--login] | import
+xcodectl auth export [--no-login] | import
                                    move the session to a runner; both check it with Apple first
 xcodectl auth logout               delete the session from this Mac's Keychain
 ```
@@ -377,15 +377,16 @@ xcodectl select 26.6    # sudo: xcode-select
 Two-factor codes (trusted device, SMS) and hardware security keys (YubiKey and other FIDO2 keys,
 PIN + touch) both work in the window. Passkeys stored in iCloud Keychain do not.
 
-When the session is missing or Apple no longer accepts it, `install` and `upgrade` open the same
-window before downloading and carry on once you are signed in. They do so only at a terminal and
-only for the Keychain session, not for `XCODECTL_SESSION`; `--no-autologin` makes them fail instead.
+When the session is missing or Apple no longer accepts it, `install`, `upgrade`, `auth status` and
+`auth export` open the same window and carry on once you are signed in. They do so only at a
+terminal (never with `--json`) and only for the Keychain session, not for `XCODECTL_SESSION`;
+`--no-login` makes them fail instead.
 
 ## CI (self-hosted runner)
 
 On your Mac: `xcodectl auth export | pbcopy`. It asks Apple whether the session still holds and
-prints it with a fresh download ticket, or fails; `--login` opens the sign-in window in that case
-and prints the new session. On the runner, once: `pbpaste | xcodectl auth import` checks the
+prints it with a fresh download ticket; when Apple rejects it, the sign-in window opens and the
+new session is printed (`--no-login` fails instead). On the runner, once: `pbpaste | xcodectl auth import` checks the
 blob with Apple the same way and stores it in that runner's Keychain. Then in the job:
 
 ```
@@ -400,8 +401,8 @@ so `auth import` and `install` fail with "User interaction is not allowed". Run
 Sharing), or use `XCODECTL_SESSION`. Runners launched in the logged-in session are not affected.
 Apple's login session lasts weeks; `xcodectl auth status` asks Apple whether it still holds and
 exits 1 when not (`--json` adds `signedIn` and the reason on stdout). When it has expired,
-`xcodectl auth export --login | pbcopy` signs you in again and copies the new session in one go;
-`auth status --login` does the same without printing it. The window opens only when someone is at
+`xcodectl auth export | pbcopy` signs you in again and copies the new session in one go;
+`auth status` does the same without printing it. The window opens only when someone is at
 the terminal and only for the Keychain session, not for `XCODECTL_SESSION`.
 
 ## How it works

@@ -39,11 +39,13 @@ struct AuthCommandTests {
         }
     }
 
-    @Test func `login is off unless asked`() throws {
-        #expect(try #require(XcodeCtl.parseAsRoot(["auth", "status"]) as? AuthCommand.Status).login == false)
-        #expect(try #require(XcodeCtl.parseAsRoot(["auth", "status", "--login"]) as? AuthCommand.Status).login)
-        #expect(try #require(XcodeCtl.parseAsRoot(["auth", "export"]) as? AuthCommand.Export).login == false)
-        #expect(try #require(XcodeCtl.parseAsRoot(["auth", "export", "--login"]) as? AuthCommand.Export).login)
+    @Test func `login is on unless turned off`() throws {
+        #expect(try #require(XcodeCtl.parseAsRoot(["auth", "status"]) as? AuthCommand.Status).login)
+        #expect(try #require(XcodeCtl.parseAsRoot(["auth", "status", "--no-login"]) as? AuthCommand.Status)
+            .login == false)
+        #expect(try #require(XcodeCtl.parseAsRoot(["auth", "export"]) as? AuthCommand.Export).login)
+        #expect(try #require(XcodeCtl.parseAsRoot(["auth", "export", "--no-login"]) as? AuthCommand.Export)
+            .login == false)
     }
 
     /// Export asks Apple first; without the login cookie that fails before any request goes out.
@@ -56,7 +58,7 @@ struct AuthCommandTests {
         }
     }
 
-    /// `--login` still fails for an XCODECTL_SESSION session; `AutologinTests` pin that the window never opens for one.
+    /// Login still fails for an XCODECTL_SESSION session; `AutologinTests` pin that the window never opens for one.
     @Test func `export with login keeps an environment session`() async throws {
         try await withSession("[]") {
             var export = try #require(XcodeCtl.parseAsRoot(["auth", "export", "--login"]) as? AuthCommand.Export)

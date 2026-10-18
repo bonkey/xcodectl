@@ -13,13 +13,18 @@ struct AutologinTests {
     }
 
     @Test func `no autologin turns it off`() throws {
-        let install = try #require(XcodeCtl.parseAsRoot(["install", "--no-autologin", "26.6"]) as? Install)
+        let install = try #require(XcodeCtl.parseAsRoot(["install", "--no-login", "26.6"]) as? Install)
         #expect(!install.autologin)
-        let upgrade = try #require(XcodeCtl.parseAsRoot(["upgrade", "--no-autologin"]) as? Upgrade)
+        let upgrade = try #require(XcodeCtl.parseAsRoot(["upgrade", "--no-login"]) as? Upgrade)
         #expect(!upgrade.autologin)
         let download = try #require(
-            XcodeCtl.parseAsRoot(["_download", "u", "d", "--with-ticket", "--no-autologin"]) as? DownloadURL)
+            XcodeCtl.parseAsRoot(["_download", "u", "d", "--with-ticket", "--no-login"]) as? DownloadURL)
         #expect(!download.autologin)
+    }
+
+    @Test func `the old flag name is gone`() {
+        #expect(throws: Error.self) { try XcodeCtl.parseAsRoot(["install", "--no-autologin", "26.6"]) }
+        #expect(throws: Error.self) { try XcodeCtl.parseAsRoot(["upgrade", "--no-autologin"]) }
     }
 
     @Test func `refresh without login cookie throws session expired`() async {
