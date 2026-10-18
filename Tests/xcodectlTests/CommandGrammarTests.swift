@@ -26,6 +26,19 @@ struct CommandGrammarTests {
         #expect(remove.keepRuntimes)
     }
 
+    @Test func `upgrade takes one version, scope and beta flags`() throws {
+        let all = try #require(XcodeCtl.parseAsRoot(["upgrade", "--beta", "--dry-run"]) as? Upgrade)
+        #expect(all.version == nil)
+        #expect(all.beta)
+        #expect(all.dryRun)
+        #expect(!all.minor)
+        #expect(!all.keep)
+        let one = try #require(XcodeCtl.parseAsRoot(["upgrade", "27", "--minor", "--keep"]) as? Upgrade)
+        #expect(one.version == "27")
+        #expect(one.minor)
+        #expect(one.keep)
+    }
+
     @Test func `list Xcodes by regex`() throws {
         let list = try #require(XcodeCtl.parseAsRoot(["list", "26\\.[45]", "--beta"]) as? List)
         #expect(list.pattern == "26\\.[45]")
@@ -131,6 +144,7 @@ struct CommandGrammarTests {
 
     @Test func `the old command names are gone`() {
         #expect(throws: Error.self) { try XcodeCtl.parseAsRoot(["list-installed"]) }
+        #expect(throws: Error.self) { try XcodeCtl.parseAsRoot(["update"]) }
         #expect(throws: Error.self) { try XcodeCtl.parseAsRoot(["runtime", "list"]) }
         #expect(throws: Error.self) { try XcodeCtl.parseAsRoot(["runtime", "install", "ios"]) }
         #expect(throws: Error.self) { try XcodeCtl.parseAsRoot(["runtime", "prune"]) }

@@ -19,7 +19,7 @@ struct XcodeCtl: AsyncParsableCommand {
             ListInstalled.self,
             ReleaseNotesCommand.self,
             Install.self,
-            Update.self,
+            Upgrade.self,
             InstallClt.self,
             Approve.self,
             Select.self,
@@ -927,16 +927,34 @@ struct Install: AsyncParsableCommand {
     }
 }
 
-// MARK: - Update
+// MARK: - Upgrade
 
-struct Update: AsyncParsableCommand {
+struct Upgrade: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
-        abstract: "Install the newest build of each installed Xcode's major.minor version.",
+        abstract: "Move each installed Xcode, or the ones named, to the newest release of its major; the old one goes.",
         discussion: """
-        A final release moves to the newest final release of its major.minor (27.0 to 27.0.1), a beta \
-        or rc to the newest build of its major.minor, prerelease or final (27.2-beta1 to 27.2-beta2 or \
-        27.2). The old versions stay installed; `xcodectl remove` deletes them.
+        A final release moves to the newest final release of its major (27.0 to 27.2), with --minor to \
+        the newest of its major.minor (27.0 to 27.0.1). Betas and rcs stay unless --beta, which moves \
+        them to the newest build of their line, prerelease or final (27.2-beta1 to 27.2-beta2 or 27.2); \
+        a final never moves to a prerelease. Once the new Xcode is installed and approved, the old one is \
+        selected out of the way if it was active, then removed with the simulator runtimes only it \
+        uses; --keep leaves it installed. A newest release already installed next to an older one \
+        counts as installed, so a run that failed while removing finishes the job when run again.
         """)
+
+    @Argument(
+        help: "Installed version: 27, 27.0, 27.0.1, 27A266a. Omit for every installed Xcode.",
+        completion: .custom(completeInstalledVersion))
+    var version: String?
+
+    @Flag(help: "Newest build of the same major.minor instead of the same major.")
+    var minor = false
+
+    @Flag(help: "Keep the old Xcode and its runtimes installed; the active Xcode stays.")
+    var keep = false
+
+    @Flag(help: "Also move installed betas and rcs, to the newest build of their line, beta or final.")
+    var beta = false
 
     @Flag(help: "Skip `approve` (license, first launch; needs sudo). Default: approve after installing.")
     var noApprove = false
@@ -949,30 +967,79 @@ struct Update: AsyncParsableCommand {
         help: "Open the sign-in window when the Apple session is missing or expired (only at a terminal).")
     var autologin = true
 
-    @Flag(help: "Only print what would be installed.")
+    @Flag(help: "Only print what would be installed and removed.")
     var dryRun = false
 
     func run() async throws {
-        let installed = Installed.all()
-        guard !installed.isEmpty else {
-            throw Fail("no Xcode installed in /Applications")
+        let installed = try await targets()
+        let releases = try await Releases.fetch()
+        var plan = Releases.upgrades(for: installed, in: releases, scope: minor ? .minor : .major, prereleases: beta)
+        if keep {
+            plan.removeAll { Installed.find(build: $0.to.build) != nil }
         }
-        let updates = try await Releases.updates(for: installed, in: Releases.fetch())
-        guard !updates.isEmpty else {
-            ui.success(SuccessAlert(stringLiteral: "Every installed Xcode is up to date"))
+        let skipped = beta ? [] : installed.filter { xcode in
+            let own = releases.filter { $0.build.lowercased() == xcode.build.lowercased() }
+            return !own.isEmpty && !own.contains(where: \.isFinal)
+        }
+        for xcode in skipped {
+            ui.info(InfoAlert(stringLiteral: "\(xcode.name) is a prerelease; --beta upgrades it"))
+        }
+        guard !plan.isEmpty else {
+            ui.success(SuccessAlert(stringLiteral: skipped.isEmpty
+                    ? "Every installed Xcode is up to date" : "Nothing else to upgrade"))
             return
         }
-        for (from, to) in updates {
-            ui.info(InfoAlert(stringLiteral: "\(from.name) \(from.build) -> Xcode \(to.display) \(to.build)"))
+        // Before installing: the new Xcode is selected only in place of an old one that was active.
+        let wasActive = plan.map { $0.from.contains(where: Installed.isActive) }
+        for (pair, active) in zip(plan, wasActive) {
+            let olds = pair.from.map(\.name).joined(separator: ", ")
+            let then = keep ? "" : "; then removed" + (active ? ", \(pair.to.display) selected" : "")
+            ui.info(InfoAlert(stringLiteral: "\(olds) -> Xcode \(pair.to.display) \(pair.to.build)\(then)"))
         }
         guard !dryRun else {
             return
         }
+        // With one target that replaces the active Xcode, `install --select` makes the switch itself.
+        let selectOnInstall = !keep && plan.count == 1 && wasActive[0]
         try await Install
             .parse(
-                updates.map(\.to.build) + (noApprove ? ["--no-approve"] : []) + (noClt ? ["--no-clt"] : [])
-                    + (autologin ? [] : ["--no-autologin"]))
+                plan.map(\.to.build) + (noApprove ? ["--no-approve"] : []) + (noClt ? ["--no-clt"] : [])
+                    + (autologin ? [] : ["--no-autologin"]) + (selectOnInstall ? ["--select"] : []))
             .run()
+        guard !keep else {
+            return
+        }
+        for (pair, active) in zip(plan, wasActive) {
+            // Selecting before removing keeps `remove` from picking a replacement of its own.
+            if active, !selectOnInstall, let xcode = Installed.find(build: pair.to.build) {
+                try Installer.select(xcode)
+                ui.success(SuccessAlert(stringLiteral: "Active: \(xcode.path.path)"))
+            }
+            for old in pair.from {
+                try await Remove.parse([old.build]).run()
+            }
+        }
+    }
+
+    /// The installed Xcodes to upgrade: every one, or those matching the version: "27" is every 27.x,
+    /// "27.0" every 27.0 build, a build number or "latest" exactly one.
+    private func targets() async throws -> [InstalledXcode] {
+        let all = Installed.all()
+        guard !all.isEmpty else {
+            throw Fail("no Xcode installed in /Applications")
+        }
+        guard let version else {
+            return all
+        }
+        let query = try Query(version)
+        guard !query.components.isEmpty else {
+            return try await [Installed.resolve(version)]
+        }
+        let hits = all.filter { query.matchesNumber($0.version) }
+        guard !hits.isEmpty else {
+            throw Fail("\(version) is not installed; see `xcodectl installed`")
+        }
+        return hits
     }
 }
 

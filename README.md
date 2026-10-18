@@ -17,9 +17,14 @@ xcodectl release-notes [<ver>] [<ver2>] [--markdown | --plain] [--abridged] [--a
 xcodectl install [<ver>...] [--select] [--no-approve] [--no-clt] [--no-autologin]
                  [--runtimes all|ios,watchos,...]
                                    several versions download and expand in parallel; so do separate runs
-xcodectl update [--dry-run] [--no-approve] [--no-clt] [--no-autologin]
-                                   newest build of each installed major.minor: 27.0 -> 27.0.1,
-                                   27.2-beta1 -> 27.2-beta2 (or 27.2 once released); old ones stay
+xcodectl upgrade [<ver>] [--minor] [--keep] [--beta] [--dry-run]
+                 [--no-approve] [--no-clt] [--no-autologin]
+                                   newest release of each installed major (27.0 -> 27.2), then the
+                                   old one is removed and the new one selected if the old one was;
+                                   --minor: newest build of the major.minor (27.0 -> 27.0.1);
+                                   --keep: old ones stay; --beta: betas and rcs move too, to the
+                                   newest beta or final of their line; <ver> picks the installed
+                                   ones to upgrade (27 is every 27.x)
 xcodectl install-clt [<ver>]       only the Command Line Tools of that Xcode version (sudo); no login needed
 xcodectl approve [<ver>]           license + first launch + developer mode (sudo); install does this by default
 xcodectl select [<ver>]            xcode-select (sudo)
@@ -37,7 +42,8 @@ xcodectl auth logout               delete the session from this Mac's Keychain
 ```
 
 `<ver>` is forgiving: `26.1`, `27`, `27 rc`, `27-rc1`, `27 beta 3`, `27A266a`, `latest`,
-`latest-beta`. Omit it on `install`, `approve`, `select` for a picker. `<platform>` is `ios`, `tvos`,
+`latest-beta`. Omit it on `install`, `approve`, `select` for a picker and on `upgrade` for every
+installed Xcode. `<platform>` is `ios`, `tvos`,
 `watchos` or `visionos`, and `runtimes` means every platform.
 
 ## List
@@ -349,7 +355,7 @@ git clone https://github.com/bonkey/xcodectl && cd xcodectl && just install
 
 ## Shell completion
 
-Commands, options and their values complete; `approve`, `select`, `remove` and
+Commands, options and their values complete; `upgrade`, `approve`, `select`, `remove` and
 `install --xcode` also offer the installed versions, and `remove` the platforms.
 
 ```
@@ -371,7 +377,7 @@ xcodectl select 26.6    # sudo: xcode-select
 Two-factor codes (trusted device, SMS) and hardware security keys (YubiKey and other FIDO2 keys,
 PIN + touch) both work in the window. Passkeys stored in iCloud Keychain do not.
 
-When the session is missing or Apple no longer accepts it, `install` and `update` open the same
+When the session is missing or Apple no longer accepts it, `install` and `upgrade` open the same
 window before downloading and carry on once you are signed in. They do so only at a terminal and
 only for the Keychain session, not for `XCODECTL_SESSION`; `--no-autologin` makes them fail instead.
 

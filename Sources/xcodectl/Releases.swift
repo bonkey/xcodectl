@@ -150,6 +150,11 @@ enum Releases {
         case byDate
     }
 
+    enum Scope {
+        case major
+        case minor
+    }
+
     static let url = URL(string: "https://xcodereleases.com/data.json")!
 
     static var cacheFile: URL {
@@ -243,29 +248,41 @@ enum Releases {
         return releases.sorted { key($1).lexicographicallyPrecedes(key($0)) }
     }
 
-    /// The release each installed Xcode updates to: the newest of its major.minor, a final release for
-    /// a final one and any kind for a prerelease. Builds missing from `releases`, already newest or
-    /// whose target is already installed get no entry.
-    static func updates(
+    /// The release each installed Xcode upgrades to: the newest of its major, or of its major.minor
+    /// with `.minor`; a final for an installed final, any kind for a prerelease. Grouped by target,
+    /// because several installed Xcodes of one line move to the same release and every one of them
+    /// goes. Builds missing from `releases`, prereleases without `prereleases`, and Xcodes already on
+    /// the target build get no entry.
+    static func upgrades(
         for installed: [InstalledXcode],
-        in releases: [Release])
-        -> [(from: InstalledXcode, to: Release)]
+        in releases: [Release],
+        scope: Scope,
+        prereleases: Bool)
+        -> [(to: Release, from: [InstalledXcode])]
     {
         func line(_ r: Release) -> [Int] {
-            Array((r.numberComponents + [0, 0]).prefix(2))
+            scope == .major ? [r.major] : Array((r.numberComponents + [0, 0]).prefix(2))
         }
-        var taken = Set(installed.map { $0.build.lowercased() })
-        var result: [(from: InstalledXcode, to: Release)] = []
+        var result: [(to: Release, from: [InstalledXcode])] = []
         for xcode in installed {
             // A release candidate and its final release share a build; the final one decides.
             let own = releases.filter { $0.build.lowercased() == xcode.build.lowercased() }
-            guard let current = own.first(where: \.isFinal) ?? own.first,
-                  let target = releases.first(where: { line($0) == line(current) && ($0.isFinal || !current.isFinal) }),
-                  taken.insert(target.build.lowercased()).inserted
+            guard let current = own.first(where: \.isFinal) ?? own.first, current.isFinal || prereleases else {
+                continue
+            }
+            // By version, not position: data.json is ordered by date, and a patch of an older major
+            // can ship after a newer major.
+            let candidates = releases.filter { line($0) == line(current) && ($0.isFinal || !current.isFinal) }
+            guard let target = sorted(candidates, by: .byVersion).first,
+                  target.build.lowercased() != xcode.build.lowercased()
             else {
                 continue
             }
-            result.append((xcode, target))
+            if let index = result.firstIndex(where: { $0.to.build.lowercased() == target.build.lowercased() }) {
+                result[index].from.append(xcode)
+            } else {
+                result.append((target, [xcode]))
+            }
         }
         return result
     }

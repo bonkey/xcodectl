@@ -15,8 +15,8 @@ struct AutologinTests {
     @Test func `no autologin turns it off`() throws {
         let install = try #require(XcodeCtl.parseAsRoot(["install", "--no-autologin", "26.6"]) as? Install)
         #expect(!install.autologin)
-        let update = try #require(XcodeCtl.parseAsRoot(["update", "--no-autologin"]) as? Update)
-        #expect(!update.autologin)
+        let upgrade = try #require(XcodeCtl.parseAsRoot(["upgrade", "--no-autologin"]) as? Upgrade)
+        #expect(!upgrade.autologin)
         let download = try #require(
             XcodeCtl.parseAsRoot(["_download", "u", "d", "--with-ticket", "--no-autologin"]) as? DownloadURL)
         #expect(!download.autologin)
