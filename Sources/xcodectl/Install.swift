@@ -103,7 +103,7 @@ enum Installed {
             }
             if (values.linkCount ?? 1) > 1,
                let id = (try? file.resourceValues(forKeys: [.fileResourceIdentifierKey]))?
-               .fileResourceIdentifier as? NSObject,
+                   .fileResourceIdentifier as? NSObject,
                !linked.insert(id).inserted
             {
                 continue

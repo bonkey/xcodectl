@@ -531,10 +531,11 @@ enum RuntimeInstaller {
     /// Reads the fraction out of a line of xcodebuild's download progress. The tool writes these with
     /// carriage returns and in the host locale, so the number can carry either decimal separator.
     static func progressFraction(_ line: String) -> Double? {
-        guard let match = line.firstMatch(of: #/(\d+(?:[.,]\d+)?)\s*%/#) else {
-            return nil
-        }
-        guard let percent = Double(match.1.replacingOccurrences(of: ",", with: ".")) else {
+        guard let match = line.firstMatch(of: #/(\d+(?:[.,]\d+)?)\s*%/#),
+              let percent = Double(match.1.replacingOccurrences(
+                  of: ",",
+                  with: "."))
+        else {
             return nil
         }
         return min(max(percent / 100, 0), 1)
