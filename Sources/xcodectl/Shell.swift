@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Daniel Bauke
 //
 
+import AppKit
 import Foundation
 
 // MARK: - Fail
@@ -32,6 +33,23 @@ enum Paths {
 
     static func ensureCache() throws {
         try FileManager.default.createDirectory(at: cache, withIntermediateDirectories: true)
+    }
+}
+
+// MARK: - Clipboard
+
+enum Clipboard {
+    /// Replaces the clipboard with `text`. Marked concealed so clipboard managers keep it out of their history.
+    @MainActor static func copy(_ text: String) {
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(text, forType: .string)
+        pasteboard.setData(Data(), forType: NSPasteboard.PasteboardType("org.nspasteboard.ConcealedType"))
+    }
+
+    /// The clipboard's text, nil when it holds none.
+    @MainActor static func paste() -> String? {
+        NSPasteboard.general.string(forType: .string)
     }
 }
 

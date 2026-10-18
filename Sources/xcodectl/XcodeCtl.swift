@@ -268,8 +268,8 @@ struct AuthCommand: AsyncParsableCommand {
     }
 
     struct Export: AsyncParsableCommand {
-        static let configuration =
-            CommandConfiguration(abstract: "Check the session with Apple and print it as one base64 line.")
+        static let configuration = CommandConfiguration(
+            abstract: "Check the session with Apple, then print it as one base64 line or copy it with --copy.")
 
         @Flag(
             name: .customLong("login"),
@@ -277,15 +277,27 @@ struct AuthCommand: AsyncParsableCommand {
             help: "Open the sign-in window when the session is missing or expired (needs a terminal).")
         var login = true
 
+        @Flag(help: "Copy the session to the clipboard instead of printing it.")
+        var copy = false
+
         func run() async throws {
             let (cookies, _) = try await Session.verify(signIn: Login.login(login))
-            try print(Session.encode(cookies))
+            let blob = try Session.encode(cookies)
+            guard copy else {
+                print(blob)
+                return
+            }
+            await Clipboard.copy(blob)
+            ui.success("Session copied to the clipboard.")
         }
     }
 
     struct Import: AsyncParsableCommand {
         static let configuration = CommandConfiguration(
-            abstract: "Check a base64 session from stdin with Apple and store it in this machine's Keychain.")
+            abstract: "Check a base64 session from stdin (or the clipboard with --paste) with Apple and store it in the Keychain.")
+
+        @Flag(help: "Read the session from the clipboard instead of stdin.")
+        var paste = false
 
         static func store(_ blob: String) async throws {
             let cookies = try Session.decode(blob)
@@ -304,7 +316,18 @@ struct AuthCommand: AsyncParsableCommand {
         }
 
         func run() async throws {
-            try await Self.store(String(decoding: FileHandle.standardInput.readDataToEndOfFile(), as: UTF8.self))
+            let blob: String
+            if paste {
+                guard let text = await Clipboard.paste(),
+                      !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                else {
+                    throw Fail("clipboard holds no text: run `xcodectl auth export --copy` on your Mac")
+                }
+                blob = text
+            } else {
+                blob = String(decoding: FileHandle.standardInput.readDataToEndOfFile(), as: UTF8.self)
+            }
+            try await Self.store(blob)
             ui.success("Session stored in the Keychain.")
         }
     }

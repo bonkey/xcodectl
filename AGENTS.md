@@ -44,14 +44,14 @@ Sources/xcodectl/
   ReleaseNotes.swift notes as Markdown (URL + ".md"), terminal rendering, plain text, diff of two, model summary and answers from the whole notes (only file importing AnyLanguageModel)
   HostedModel.swift  provider, base URL and API key from options and environment, default model
   Session.swift      cookie model, Keychain, XCODECTL_SESSION, download-ticket refresh
-  LoginWindow.swift  AppKit + WKWebView window, WebAuthn→libfido2 bridge (only file importing AppKit/WebKit)
+  LoginWindow.swift  AppKit + WKWebView window, WebAuthn→libfido2 bridge (only file importing WebKit)
   main.swift         entry point: NSApp.run() on main, command in a detached task
   Downloader.swift   parallel ranged download + resume
   Install.swift      installed scan, unxip, move, approve, Command Line Tools, select, remove
   Requirements.swift Apple's system requirements page (newest macOS per Xcode), whether a release runs on this Mac
   Runtimes.swift     simulator runtime catalog, install through xcodebuild or simctl, removal through simctl, runtimes an Xcode uses
   RuntimeAsset.swift asset server lookup of a cryptex runtime, checksum, AEA/AppleArchive expansion of its .aar (only file importing AppleArchive)
-  Shell.swift        Fail error, paths, sudo(), runTool(), small system helpers
+  Shell.swift        Fail error, paths, sudo(), runTool(), clipboard, small system helpers
   Version.swift      `let version = "x.y.z"`, bumped by `just release`
 ```
 

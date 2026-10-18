@@ -36,8 +36,9 @@ xcodectl installed <platform>|runtimes
 xcodectl install <platform> [<ver>] [--xcode <ver>]
 xcodectl remove <platform>|runtimes [<ver>]
 xcodectl prune [--dry-run]         leftover runtime registrations that still hold disk space
-xcodectl auth export [--no-login] | import
-                                   move the session to a runner; both check it with Apple first
+xcodectl auth export [--no-login] [--copy] | import [--paste]
+                                   move the session to a runner; both check it with Apple first;
+                                   --copy / --paste use the clipboard
 xcodectl auth logout               delete the session from this Mac's Keychain
 ```
 
@@ -384,10 +385,12 @@ terminal (never with `--json`) and only for the Keychain session, not for `XCODE
 
 ## CI (self-hosted runner)
 
-On your Mac: `xcodectl auth export | pbcopy`. It asks Apple whether the session still holds and
-prints it with a fresh download ticket; when Apple rejects it, the sign-in window opens and the
-new session is printed (`--no-login` fails instead). On the runner, once: `pbpaste | xcodectl auth import` checks the
-blob with Apple the same way and stores it in that runner's Keychain. Then in the job:
+On your Mac: `xcodectl auth export --copy`. It asks Apple whether the session still holds and
+copies it with a fresh download ticket; when Apple rejects it, the sign-in window opens and the
+new session is copied (`--no-login` fails instead). On the runner, once:
+`xcodectl auth import --paste` checks the blob with Apple the same way and stores it in that
+runner's Keychain. `xcodectl auth export | pbcopy` and `pbpaste | xcodectl auth import` are the
+same by hand. Then in the job:
 
 ```
 xcodectl install 26.6 --select
@@ -401,7 +404,7 @@ so `auth import` and `install` fail with "User interaction is not allowed". Run
 Sharing), or use `XCODECTL_SESSION`. Runners launched in the logged-in session are not affected.
 Apple's login session lasts weeks; `xcodectl auth status` asks Apple whether it still holds and
 exits 1 when not (`--json` adds `signedIn` and the reason on stdout). When it has expired,
-`xcodectl auth export | pbcopy` signs you in again and copies the new session in one go;
+`xcodectl auth export --copy` signs you in again and copies the new session in one go;
 `auth status` does the same without printing it. The window opens only when someone is at
 the terminal and only for the Keychain session, not for `XCODECTL_SESSION`.
 
