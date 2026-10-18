@@ -25,7 +25,6 @@ struct XcodeCtl: AsyncParsableCommand {
             Select.self,
             Remove.self,
             Prune.self,
-            DownloadURL.self,
         ])
 }
 
@@ -1592,44 +1591,5 @@ struct Prune: AsyncParsableCommand {
             return
         }
         try await removeRuntimes(leftovers)
-    }
-}
-
-// MARK: - DownloadURL
-
-struct DownloadURL: AsyncParsableCommand {
-    static let configuration = CommandConfiguration(
-        commandName: "_download",
-        abstract: "Download any URL with the parallel downloader.",
-        shouldDisplay: false)
-
-    @Argument var url: String
-    @Argument var destination: String
-    @Flag var withTicket = false
-    @Flag(name: .customLong("login"), inversion: .prefixedNo) var autologin = true
-
-    func run() async throws {
-        guard let url = URL(string: url) else {
-            throw Fail("bad URL")
-        }
-        var header = ""
-        if withTicket {
-            let cookies = try await Session.ensureTicket(signIn: Login.autologin(autologin))
-            header = Session.header(cookies, host: url.host!)
-        }
-        let connections = Int(ProcessInfo.processInfo.environment["XCODECTL_CONNECTIONS"] ?? "") ?? Downloader
-            .defaultConnections
-        let downloader = Downloader(
-            url: url,
-            cookieHeader: header,
-            destination: URL(fileURLWithPath: destination),
-            connections: connections)
-        try await ui.progressBarStep(
-            message: "Downloading \(url.lastPathComponent)",
-            successMessage: "Downloaded",
-            errorMessage: "Download failed")
-        { update in
-            try await downloader.run(progress: update)
-        }
     }
 }

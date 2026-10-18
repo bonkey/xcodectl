@@ -17,9 +17,6 @@ struct AutologinTests {
         #expect(!install.autologin)
         let upgrade = try #require(XcodeCtl.parseAsRoot(["upgrade", "--no-login"]) as? Upgrade)
         #expect(!upgrade.autologin)
-        let download = try #require(
-            XcodeCtl.parseAsRoot(["_download", "u", "d", "--with-ticket", "--no-login"]) as? DownloadURL)
-        #expect(!download.autologin)
     }
 
     @Test func `the old flag name is gone`() {
