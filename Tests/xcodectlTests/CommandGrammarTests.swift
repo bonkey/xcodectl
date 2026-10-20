@@ -20,6 +20,16 @@ struct CommandGrammarTests {
         #expect(install.select == true)
     }
 
+    /// No runtime to install, so nothing needs the Xcode approved.
+    @Test func `install with no runtimes takes --no-approve`() throws {
+        let install = try #require(
+            XcodeCtl.parseAsRoot(["install", "27.1", "--runtimes", "none", "--no-approve"]) as? Install)
+        #expect(install.runtimeSelection?.platforms == [])
+        #expect(throws: Error.self) {
+            try XcodeCtl.parseAsRoot(["install", "27.1", "--runtimes", "ios", "--no-approve"])
+        }
+    }
+
     @Test func `remove Xcode keeping runtimes`() throws {
         let remove = try #require(XcodeCtl.parseAsRoot(["remove", "27.1", "--keep-runtimes"]) as? Remove)
         #expect(remove.version == "27.1")

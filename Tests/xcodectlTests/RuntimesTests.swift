@@ -457,6 +457,12 @@ struct RuntimeSelectionTests {
         #expect(selection?.isAll == true)
     }
 
+    @Test func `none selects no platform`() {
+        let selection = RuntimeSelection(argument: "None")
+        #expect(selection?.platforms == [])
+        #expect(selection?.isAll == false)
+    }
+
     @Test func `comma list selects those platforms`() {
         let selection = RuntimeSelection(argument: "ios,watchos")
         #expect(selection?.platforms == [.ios, .watchos])

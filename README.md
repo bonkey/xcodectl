@@ -15,7 +15,7 @@ xcodectl installed [--no-size]     what is in /Applications with its size and th
 xcodectl release-notes [<ver>] [<ver2>] [--markdown | --plain] [--abridged] [--ask "<question>"]
                                    notes rendered in the terminal; two versions: what changed; no login needed
 xcodectl install [<ver>...] [--select] [--no-approve] [--no-clt] [--no-login]
-                 [--runtimes all|ios,watchos,...]
+                 [--runtimes all|ios,watchos,...|none]
                                    several versions download and expand in parallel; so do separate runs
 xcodectl upgrade [<ver>] [--minor] [--keep] [--beta] [--dry-run]
                  [--no-approve] [--no-clt] [--no-login]
@@ -327,6 +327,8 @@ Install Xcode and its runtimes in one go:
 xcodectl install 27.1 --runtimes ios,watchos
 xcodectl install 27.1 --runtimes all      # every platform, about 23 GB
 ```
+
+`--runtimes none` installs none, for a run that overrides a `runtimes` default from the config file.
 
 Runtimes are several gigabytes each, and a deleted one only gives its space back once the last
 registration referencing it is gone. `remove` says which happened:

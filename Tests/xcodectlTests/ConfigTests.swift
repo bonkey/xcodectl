@@ -73,7 +73,7 @@ struct ConfigTests {
             "json: expects true or false",
             "[install] clt: expects true or false",
             "[install] nope: unknown key",
-            "[install] runtimes: \"mars\" is not one of all, ios, tvos, watchos, visionos",
+            "[install] runtimes: \"mars\" is not one of all, none, ios, tvos, watchos, visionos",
             "[list] order: \"newest\" is not one of by-version, by-date",
             "[update]: no such command",
         ])

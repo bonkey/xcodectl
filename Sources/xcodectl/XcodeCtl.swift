@@ -760,7 +760,7 @@ struct Install: AsyncParsableCommand {
 
     @Option(
         name: .customLong("runtimes"),
-        help: "Also install simulator runtimes matching this Xcode: 'all' or a list like 'ios,watchos'.")
+        help: "Also install simulator runtimes matching this Xcode: 'all', a list like 'ios,watchos', or 'none'.")
     var runtimeSelection: RuntimeSelection?
 
     @Option(
@@ -789,7 +789,7 @@ struct Install: AsyncParsableCommand {
             throw Fail("--xcode applies to runtimes, e.g. `xcodectl install ios --xcode 27.0`")
         }
         // Runtimes install through this Xcode's own xcodebuild, which an unapproved Xcode refuses to run.
-        guard runtimeSelection == nil || approve != false else {
+        guard (runtimeSelection?.platforms ?? []).isEmpty || approve != false else {
             throw Fail("--runtimes needs an approved Xcode; drop --no-approve")
         }
         guard select != true || versions.count <= 1 else {
@@ -843,7 +843,7 @@ struct Install: AsyncParsableCommand {
             if clt != false {
                 Installer.upgradeCommandLineTools(for: release)
             }
-            if let runtimeSelection {
+            if let runtimeSelection, !runtimeSelection.platforms.isEmpty {
                 try await installRuntimes(runtimeSelection, using: xcode)
             }
             if select == true {
@@ -1322,13 +1322,18 @@ extension RuntimePlatform: ExpressibleByArgument {
 
 // MARK: - RuntimeSelection
 
-/// The value of `install --runtimes`: `all`, or a comma-separated list like `ios,watchos`.
+/// The value of `install --runtimes`: `all`, `none`, or a comma-separated list like `ios,watchos`.
 struct RuntimeSelection: ExpressibleByArgument, Equatable {
     init?(argument: String) {
         let text = argument.lowercased().trimmingCharacters(in: .whitespaces)
         if text == "all" {
             platforms = RuntimePlatform.allCases
             isAll = true
+            return
+        }
+        if text == "none" {
+            platforms = []
+            isAll = false
             return
         }
         var chosen: [RuntimePlatform] = []
@@ -1348,7 +1353,7 @@ struct RuntimeSelection: ExpressibleByArgument, Equatable {
     }
 
     static var allValueStrings: [String] {
-        ["all"] + RuntimePlatform.allValueStrings
+        ["all", "none"] + RuntimePlatform.allValueStrings
     }
 
     let platforms: [RuntimePlatform]
