@@ -505,7 +505,7 @@ struct ListInstalled: AsyncParsableCommand {
         let used = await withTaskGroup(of: (Int, [InstalledRuntime]).self) { group in
             for (index, xcode) in installed.enumerated() {
                 group.addTask {
-                    (index, Runtimes.used(by: (try? SimCtl.chosenRuntimeBuilds(for: xcode)) ?? [], in: registered))
+                    (index, Runtimes.used(by: (try? SimCtl.runtimeMatches(for: xcode)) ?? [], in: registered))
                 }
             }
             var used = [[InstalledRuntime]](repeating: [], count: installed.count)
@@ -1262,9 +1262,9 @@ struct Remove: AsyncParsableCommand {
         do {
             let others = try Installed.all()
                 .filter { $0.path.standardizedFileURL.path != app.standardizedFileURL.path }
-                .map(SimCtl.chosenRuntimeBuilds(for:))
+                .map(SimCtl.runtimeMatches(for:))
             exclusive = try Runtimes.exclusive(
-                to: SimCtl.chosenRuntimeBuilds(for: xcode),
+                to: SimCtl.runtimeMatches(for: xcode),
                 others: others,
                 in: SimCtl.runtimes())
         } catch {

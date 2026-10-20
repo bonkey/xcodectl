@@ -258,21 +258,33 @@ enum Runtimes {
         }
     }
 
-    /// The ready registrations among `chosen` runtime builds. A chosen build without one is a platform
+    /// The ready registrations an Xcode's SDKs run on. An SDK takes the registration with its chosen
+    /// build. When that build is not installed, the SDK runs on another build of its version, so the
+    /// registrations of its platform and major.minor count instead. A match with neither is a platform
     /// that has no runtime installed.
-    static func used(by chosen: Set<String>, in installed: [InstalledRuntime]) -> [InstalledRuntime] {
-        installed.filter { $0.isReady && chosen.contains($0.build.lowercased()) }
+    static func used(by matches: [RuntimeMatch], in installed: [InstalledRuntime]) -> [InstalledRuntime] {
+        let ready = installed.filter(\.isReady)
+        var used = Set<String>()
+        for match in matches {
+            let chosen = ready.filter { $0.build.lowercased() == match.build }
+            let hits = !chosen.isEmpty || match.platform == nil ? chosen : ready.filter {
+                $0.platform == match.platform && minor($0.version) == minor(match.sdkVersion)
+            }
+            used.formUnion(hits.map(\.identifier))
+        }
+        return ready.filter { used.contains($0.identifier) }
     }
 
     /// The runtimes one Xcode uses that none of the `others` does. Several Xcodes often share a
     /// runtime, so removing an Xcode removes only these.
     static func exclusive(
-        to chosen: Set<String>,
-        others: [Set<String>],
+        to own: [RuntimeMatch],
+        others: [[RuntimeMatch]],
         in installed: [InstalledRuntime])
         -> [InstalledRuntime]
     {
-        used(by: others.reduce(chosen) { $0.subtracting($1) }, in: installed)
+        let shared = Set(used(by: others.flatMap(\.self), in: installed).map(\.identifier))
+        return used(by: own, in: installed).filter { !shared.contains($0.identifier) }
     }
 
     /// Picks one runtime of a platform. A bare version prefers the release over a beta of the same
@@ -301,6 +313,10 @@ enum Runtimes {
                 + "see `xcodectl list \(platform.rawValue) --all`")
         }
         return candidates.first { !$0.isBeta } ?? candidates[0]
+    }
+
+    private static func minor(_ version: String) -> [Int] {
+        Array((version.split(separator: ".").map { Int($0) ?? 0 } + [0, 0]).prefix(2))
     }
 }
 
@@ -369,6 +385,16 @@ struct InstalledRuntime: Equatable {
     }
 }
 
+// MARK: - RuntimeMatch
+
+/// One SDK of an Xcode, as `simctl runtime match list` reports it.
+struct RuntimeMatch: Equatable {
+    let platform: RuntimePlatform?
+    let sdkVersion: String
+    /// `chosenRuntimeBuild`, lowercased.
+    let build: String
+}
+
 // MARK: - SimCtl
 
 enum SimCtl {
@@ -400,21 +426,25 @@ enum SimCtl {
         }
     }
 
-    /// The runtime builds an Xcode uses, lowercased, one per SDK it ships: what CoreSimulator picks
-    /// for that SDK, which can be a newer build than the SDK's own. `DEVELOPER_DIR` asks a specific
-    /// Xcode without `xcode-select`.
-    static func chosenRuntimeBuilds(for xcode: InstalledXcode) throws -> Set<String> {
+    /// The SDKs an Xcode ships, each with the runtime build CoreSimulator picks for it, which can be a
+    /// newer build than the SDK's own. `DEVELOPER_DIR` asks a specific Xcode without `xcode-select`.
+    static func runtimeMatches(for xcode: InstalledXcode) throws -> [RuntimeMatch] {
         try parseMatches(Data(run(
             executable,
             ["runtime", "match", "list", "-j"],
             environment: ["DEVELOPER_DIR": xcode.developerDir.path]).utf8))
     }
 
-    static func parseMatches(_ data: Data) throws -> Set<String> {
+    static func parseMatches(_ data: Data) throws -> [RuntimeMatch] {
         guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: [String: Any]] else {
             throw Fail("cannot read `simctl runtime match list -j` output")
         }
-        return Set(root.values.compactMap { ($0["chosenRuntimeBuild"] as? String)?.lowercased() })
+        return root.sorted { $0.key < $1.key }.map { _, value in
+            RuntimeMatch(
+                platform: (value["platform"] as? String).flatMap(RuntimePlatform.init(identifier:)),
+                sdkVersion: value["sdkVersion"] as? String ?? "",
+                build: (value["chosenRuntimeBuild"] as? String)?.lowercased() ?? "")
+        }
     }
 
     /// Registers a downloaded runtime disk image. CoreSimulator copies the image into its own store.

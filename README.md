@@ -500,7 +500,9 @@ something is wrong.
 - `remove`: deletes the simulator runtimes only this Xcode uses, then the app bundle. Which runtimes
   an Xcode uses is what `simctl runtime match list` answers under that Xcode's `DEVELOPER_DIR`: the
   runtime CoreSimulator picks for each of its SDKs, often a newer build than the SDK's own, so the
-  SDK builds in `data.json` cannot tell. Runtimes go first because simctl comes with Xcode and may
+  SDK builds in `data.json` cannot tell. When the picked build is not installed, the SDK runs on
+  another build of its version, so the installed runtimes of that platform and major.minor count.
+  Runtimes go first because simctl comes with Xcode and may
   not run once the Xcode is gone. System packages and DerivedData are shared between Xcode versions
   and stay.
 - Simulator runtimes: the catalog is Apple's public

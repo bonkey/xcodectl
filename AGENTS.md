@@ -80,6 +80,8 @@ Sources/xcodectl/
 - The runtimes an Xcode uses (`installed`, `remove`) are the ready registrations whose build is a
   `chosenRuntimeBuild` of `simctl runtime match list -j` run under that Xcode's `DEVELOPER_DIR`. Not the
   SDK builds in `data.json`: CoreSimulator often picks a newer runtime build than the SDK's own.
+  The chosen build is a preference, not proof of an install: when it is not installed, the SDK runs on
+  another build of its version, so the ready registrations of that platform and major.minor count.
   `remove` keeps runtimes another installed Xcode uses, and deletes runtimes before the Xcode,
   because simctl may not run once it is gone.
 - Concurrency: AppKit owns the main thread (`main.swift` starts `NSApp.run()`), the command runs

@@ -481,12 +481,19 @@ struct RuntimeMatchTests {
     @Test func `parse matches reads the chosen runtime of every SDK`() throws {
         let output = """
         {
-          "appletvos27.0" : {"chosenRuntimeBuild" : "24J360", "defaultBuild" : "24J360", "sdkBuild" : "24J360"},
-          "iphoneos27.0" : {"chosenRuntimeBuild" : "24A434", "defaultBuild" : "24A430", "sdkBuild" : "24A430"},
-          "watchos27.0" : {"chosenRuntimeBuild" : "24R360", "defaultBuild" : "24R360", "sdkBuild" : "24R360"}
+          "appletvos27.0" : {"chosenRuntimeBuild" : "24J360", "defaultBuild" : "24J360", "sdkBuild" : "24J360",
+                             "platform" : "com.apple.platform.appletvos", "sdkVersion" : "27.0"},
+          "iphoneos27.0" : {"chosenRuntimeBuild" : "24A434", "defaultBuild" : "24A430", "sdkBuild" : "24A430",
+                            "platform" : "com.apple.platform.iphoneos", "sdkVersion" : "27.0"},
+          "watchos27.0" : {"chosenRuntimeBuild" : "24R360", "defaultBuild" : "24R360", "sdkBuild" : "24R360",
+                           "platform" : "com.apple.platform.watchos", "sdkVersion" : "27.0"}
         }
         """
-        #expect(try SimCtl.parseMatches(Data(output.utf8)) == ["24j360", "24a434", "24r360"])
+        #expect(try SimCtl.parseMatches(Data(output.utf8)) == [
+            match(.tvos, "27.0", "24j360"),
+            match(.ios, "27.0", "24a434"),
+            match(.watchos, "27.0", "24r360"),
+        ])
     }
 
     @Test func `parse matches rejects output that is not JSON`() {
@@ -495,7 +502,9 @@ struct RuntimeMatchTests {
 
     /// A chosen build with no registration behind it is a platform without a runtime installed.
     @Test func `used takes the installed runtimes with a chosen build`() throws {
-        let used = try Runtimes.used(by: ["24a434", "24r360"], in: installed())
+        let used = try Runtimes.used(
+            by: [match(.ios, "27.0", "24a434"), match(.watchos, "27.0", "24r360")],
+            in: installed())
         #expect(used.map(\.build) == ["24A434"])
     }
 
@@ -503,20 +512,57 @@ struct RuntimeMatchTests {
         let installed = try SimCtl.parse(makeSimctlOutput([
             ("A", "com.apple.platform.iphonesimulator", "27.0", "24A434", "Unusable", 1, "/x.asset/AssetData"),
         ]))
-        #expect(Runtimes.used(by: ["24a434"], in: installed) == [])
+        #expect(Runtimes.used(by: [match(.ios, "27.0", "24a434")], in: installed) == [])
+    }
+
+    /// Xcode 27.1 chooses its SDK's own build 24A94232, while xcodebuild installed 24A94401.
+    @Test func `used falls back to the SDK version when the chosen build is not installed`() throws {
+        let used = try Runtimes.used(by: [match(.ios, "27.1", "24a94232")], in: installed())
+        #expect(used.map(\.build) == ["24A94401"])
+    }
+
+    @Test func `used takes only the chosen build when it is installed`() throws {
+        let installed = try installed() + SimCtl.parse(makeSimctlOutput([
+            ("D", "com.apple.platform.iphonesimulator", "27.1", "24A94425", "Ready", 1, "/d.asset/AssetData"),
+        ]))
+        #expect(Runtimes.used(by: [match(.ios, "27.1", "24a94401")], in: installed).map(\.build) == ["24A94401"])
+    }
+
+    @Test func `the fallback takes the platform and major.minor of the SDK`() throws {
+        let installed = try installed() + SimCtl.parse(makeSimctlOutput([
+            ("D", "com.apple.platform.iphonesimulator", "26.0.1", "23A8464", "Ready", 1, "/d.asset/AssetData"),
+        ]))
+        #expect(Runtimes.used(by: [match(.ios, "27.0", "24a430")], in: installed).map(\.build) == ["24A434"])
+        #expect(Runtimes.used(by: [match(.ios, "26.0", "23a339")], in: installed).map(\.build) == ["23A8464"])
+        #expect(Runtimes.used(by: [match(.watchos, "27.0", "24r360")], in: installed) == [])
     }
 
     @Test func `exclusive keeps what another Xcode uses`() throws {
         let exclusive = try Runtimes.exclusive(
-            to: ["24a434", "24j360"],
-            others: [["24a94401", "24j360"]],
+            to: [match(.ios, "27.0", "24a434"), match(.tvos, "27.0", "24j360")],
+            others: [[match(.ios, "27.1", "24a94401"), match(.tvos, "27.0", "24j360")]],
             in: installed())
         #expect(exclusive.map(\.build) == ["24A434"])
     }
 
     @Test func `exclusive without other Xcodes is everything used`() throws {
-        let exclusive = try Runtimes.exclusive(to: ["24a434", "24j360"], others: [], in: installed())
+        let exclusive = try Runtimes.exclusive(
+            to: [match(.ios, "27.0", "24a434"), match(.tvos, "27.0", "24j360")],
+            others: [],
+            in: installed())
         #expect(exclusive.map(\.build) == ["24A434", "24J360"])
+    }
+
+    @Test func `exclusive keeps a runtime another Xcode uses through the fallback`() throws {
+        let exclusive = try Runtimes.exclusive(
+            to: [match(.ios, "27.1", "24a94401")],
+            others: [[match(.ios, "27.1", "24a94232")]],
+            in: installed())
+        #expect(exclusive == [])
+    }
+
+    private func match(_ platform: RuntimePlatform, _ sdkVersion: String, _ build: String) -> RuntimeMatch {
+        RuntimeMatch(platform: platform, sdkVersion: sdkVersion, build: build)
     }
 
     /// iOS 27.0 and 27.1 plus tvOS 27.0, all ready.
