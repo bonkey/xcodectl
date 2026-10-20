@@ -287,6 +287,12 @@ enum Runtimes {
         return used(by: own, in: installed).filter { !shared.contains($0.identifier) }
     }
 
+    /// The ready runtimes that none of these Xcodes uses, without the ones simctl cannot delete.
+    static func unused(by matches: [[RuntimeMatch]], in installed: [InstalledRuntime]) -> [InstalledRuntime] {
+        let inUse = Set(used(by: matches.flatMap(\.self), in: installed).map(\.identifier))
+        return installed.filter { $0.isReady && $0.deletable && !inUse.contains($0.identifier) }
+    }
+
     /// Picks one runtime of a platform. A bare version prefers the release over a beta of the same
     /// version; a build matches exactly.
     static func resolve(
@@ -355,6 +361,9 @@ extension Runtimes {
 /// One runtime registration as CoreSimulator knows it.
 struct InstalledRuntime: Equatable {
     let identifier: String
+    /// What simulator devices name as their runtime, such as `com.apple.CoreSimulator.SimRuntime.iOS-27-0`.
+    /// The builds of one version share it.
+    let runtimeIdentifier: String?
     let platform: RuntimePlatform?
     let version: String
     let build: String
@@ -395,6 +404,18 @@ struct RuntimeMatch: Equatable {
     let build: String
 }
 
+// MARK: - SimulatorDevice
+
+/// One simulator device, as `simctl list devices` reports it.
+struct SimulatorDevice: Equatable {
+    let udid: String
+    let name: String
+    /// The runtime by version, so the device runs on any build of it.
+    let runtimeIdentifier: String
+    /// False once no runtime serves `runtimeIdentifier`.
+    let isAvailable: Bool
+}
+
 // MARK: - SimCtl
 
 enum SimCtl {
@@ -412,6 +433,7 @@ enum SimCtl {
         return root.map { identifier, value in
             InstalledRuntime(
                 identifier: identifier,
+                runtimeIdentifier: value["runtimeIdentifier"] as? String,
                 platform: (value["platformIdentifier"] as? String).flatMap(RuntimePlatform.init(identifier:)),
                 version: value["version"] as? String ?? "?",
                 build: value["build"] as? String ?? "?",
@@ -445,6 +467,35 @@ enum SimCtl {
                 sdkVersion: value["sdkVersion"] as? String ?? "",
                 build: (value["chosenRuntimeBuild"] as? String)?.lowercased() ?? "")
         }
+    }
+
+    /// Every simulator device, including the ones whose runtime is gone.
+    static func devices() throws -> [SimulatorDevice] {
+        try parseDevices(Data(run(executable, ["list", "devices", "-j"]).utf8))
+    }
+
+    static func parseDevices(_ data: Data) throws -> [SimulatorDevice] {
+        guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let devices = root["devices"] as? [String: [[String: Any]]]
+        else {
+            throw Fail("cannot read `simctl list devices -j` output")
+        }
+        return devices.sorted { $0.key < $1.key }.flatMap { runtime, entries in
+            entries.compactMap { entry -> SimulatorDevice? in
+                guard let udid = entry["udid"] as? String else {
+                    return nil
+                }
+                return SimulatorDevice(
+                    udid: udid,
+                    name: entry["name"] as? String ?? "?",
+                    runtimeIdentifier: runtime,
+                    isAvailable: entry["isAvailable"] as? Bool ?? true)
+            }
+        }
+    }
+
+    static func deleteDevices(_ devices: [SimulatorDevice]) throws {
+        try run(executable, ["delete"] + devices.map(\.udid))
     }
 
     /// Registers a downloaded runtime disk image. CoreSimulator copies the image into its own store.

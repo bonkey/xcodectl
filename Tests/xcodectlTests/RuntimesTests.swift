@@ -448,6 +448,52 @@ struct SimCtlDeleteTests {
     }
 }
 
+// MARK: - SimulatorDeviceTests
+
+struct SimulatorDeviceTests {
+    @Test func `runtime registrations carry the identifier devices name`() throws {
+        let installed = try SimCtl.parse(makeSimctlOutput([
+            ("A", "com.apple.platform.iphonesimulator", "27.0", "24A434", "Ready", 1, "/a.asset/AssetData"),
+        ]))
+        #expect(installed.first?.runtimeIdentifier == "com.apple.platform.iphonesimulator-27.0")
+    }
+
+    /// `simctl list devices -j` after iOS 27.0 was deleted: its devices stay listed, unavailable.
+    @Test func `parse devices reads every device under its runtime`() throws {
+        let output = """
+        {
+          "devices" : {
+            "com.apple.CoreSimulator.SimRuntime.iOS-27-1" : [
+              {"udid" : "E2AF", "name" : "iPhone Duo", "isAvailable" : true, "state" : "Shutdown"}
+            ],
+            "com.apple.CoreSimulator.SimRuntime.iOS-27-0" : [
+              {"udid" : "3B01", "name" : "iPhone 18 Pro", "isAvailable" : false, "state" : "Shutdown",
+               "availabilityError" : "runtime profile not found using \\"System\\" match policy"},
+              {"name" : "no udid"}
+            ]
+          }
+        }
+        """
+        #expect(try SimCtl.parseDevices(Data(output.utf8)) == [
+            SimulatorDevice(
+                udid: "3B01",
+                name: "iPhone 18 Pro",
+                runtimeIdentifier: "com.apple.CoreSimulator.SimRuntime.iOS-27-0",
+                isAvailable: false),
+            SimulatorDevice(
+                udid: "E2AF",
+                name: "iPhone Duo",
+                runtimeIdentifier: "com.apple.CoreSimulator.SimRuntime.iOS-27-1",
+                isAvailable: true),
+        ])
+    }
+
+    @Test func `parse devices rejects output without devices`() {
+        #expect(throws: Error.self) { try SimCtl.parseDevices(Data("not json".utf8)) }
+        #expect(throws: Error.self) { try SimCtl.parseDevices(Data("{}".utf8)) }
+    }
+}
+
 // MARK: - RuntimeSelectionTests
 
 struct RuntimeSelectionTests {
@@ -573,6 +619,26 @@ struct RuntimeMatchTests {
             others: [[match(.ios, "27.1", "24a94232")]],
             in: installed())
         #expect(exclusive == [])
+    }
+
+    @Test func `unused is every ready runtime no Xcode uses`() throws {
+        let unused = try Runtimes.unused(
+            by: [[match(.ios, "27.1", "24a94232")], [match(.watchos, "27.0", "24r360")]],
+            in: installed())
+        #expect(unused.map(\.build) == ["24A434", "24J360"])
+        #expect(try Runtimes.unused(by: [], in: installed()).count == 3)
+    }
+
+    @Test func `unused leaves out leftovers and what simctl cannot delete`() throws {
+        let output = """
+        {
+          "A" : {"platformIdentifier" : "com.apple.platform.iphonesimulator", "version" : "27.0", "build" : "24A434",
+                 "state" : "Ready", "deletable" : false},
+          "B" : {"platformIdentifier" : "com.apple.platform.iphonesimulator", "version" : "26.0", "build" : "23A339",
+                 "state" : "Unusable", "deletable" : true}
+        }
+        """
+        #expect(try Runtimes.unused(by: [], in: SimCtl.parse(Data(output.utf8))) == [])
     }
 
     private func match(_ platform: RuntimePlatform, _ sdkVersion: String, _ build: String) -> RuntimeMatch {

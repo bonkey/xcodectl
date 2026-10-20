@@ -473,6 +473,7 @@ extension Upgrade: Configurable {
         .flag("clt", \.clt, default: true),
         .flag("login", \.autologin, default: true),
         .option("runtimes", \.runtimeSelection, example: "ios,watchos"),
+        .flag("replace-runtimes", \.replaceRuntimes, default: false),
     ]
 }
 

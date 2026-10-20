@@ -114,6 +114,13 @@ struct CommandGrammarTests {
         #expect(none.newRuntimes(registered: registered) == nil)
     }
 
+    @Test func `upgrade replaces runtimes on request`() throws {
+        #expect(try (XcodeCtl.parseAsRoot(["upgrade"]) as? Upgrade)?.replaceRuntimes == nil)
+        #expect(try (XcodeCtl.parseAsRoot(["upgrade", "--replace-runtimes"]) as? Upgrade)?.replaceRuntimes == true)
+        #expect(try (XcodeCtl.parseAsRoot(["upgrade", "--no-replace-runtimes"]) as? Upgrade)?.replaceRuntimes == false)
+        #expect(throws: Error.self) { try XcodeCtl.parseAsRoot(["upgrade", "--replace-runtimes", "--no-approve"]) }
+    }
+
     @Test func `upgrade runtimes need an approved Xcode`() {
         #expect(throws: Error.self) { try XcodeCtl.parseAsRoot(["upgrade", "--runtimes", "ios", "--no-approve"]) }
         #expect(throws: Never.self) { try XcodeCtl.parseAsRoot(["upgrade", "--runtimes", "none", "--no-approve"]) }

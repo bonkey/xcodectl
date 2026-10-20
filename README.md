@@ -19,13 +19,16 @@ xcodectl install [<ver>...] [--select] [--no-approve] [--no-clt] [--no-login]
                                    several versions download and expand in parallel; so do separate runs
 xcodectl upgrade [<ver>] [--minor] [--keep] [--beta] [--dry-run]
                  [--no-approve] [--no-clt] [--no-login] [--runtimes all|ios,watchos,...|none]
+                 [--replace-runtimes]
                                    newest release of each installed major (27.0 -> 27.2) with its
                                    simulator runtimes for the platforms you have, then the old one
                                    is removed and the new one selected if the old one was;
                                    --minor: newest build of the major.minor (27.0 -> 27.0.1);
                                    --keep: old ones stay; --beta: betas and rcs move too, to the
                                    newest beta or final of their line; <ver> picks the installed
-                                   ones to upgrade (27 is every 27.x); --runtimes: other platforms
+                                   ones to upgrade (27 is every 27.x); --runtimes: other platforms;
+                                   --replace-runtimes: afterwards delete every runtime no installed
+                                   Xcode uses, with its simulators
 xcodectl install-clt [<ver>]       only the Command Line Tools of that Xcode version (sudo); no login needed
 xcodectl approve [<ver>]           license + first launch + developer mode (sudo); install does this by default
 xcodectl select [<ver>]            xcode-select (sudo)
@@ -333,6 +336,17 @@ xcodectl install 27.1 --runtimes all      # every platform, about 23 GB
 `xcodectl upgrade` does this by itself: each new Xcode gets its runtime for every platform that has
 a runtime installed, before the old Xcode and the runtimes only it uses go. `--runtimes` names other
 platforms, or `none`.
+
+`xcodectl upgrade --replace-runtimes` then deletes every ready runtime that no installed Xcode uses,
+with the simulators on it, also when there was nothing to upgrade. That includes older OS versions
+kept for testing, such as iOS 18 next to Xcode 27; leftovers that are not ready stay for `prune`. A
+simulator stays when another build of its OS version is still installed. `--dry-run` lists them:
+
+```
+$ xcodectl upgrade --dry-run --replace-runtimes
+PLATFORM  VERSION  BUILD   SIZE    SIMULATORS
+iOS       27.0     24A434  7.5 GB  11
+```
 
 Runtimes are several gigabytes each, and a deleted one only gives its space back once the last
 registration referencing it is gone. `remove` says which happened:

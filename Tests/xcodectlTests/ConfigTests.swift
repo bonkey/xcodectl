@@ -144,6 +144,7 @@ struct ConfigTests {
         # clt = true
         # login = true
         # runtimes = "ios,watchos"
+        # replace-runtimes = false
 
         [remove]
         # keep-runtimes = false
@@ -254,6 +255,8 @@ struct ConfigTests {
         #expect(try command(["upgrade"], "runtimes = \"ios\"", as: Upgrade.self).runtimeSelection?.platforms == [.ios])
         let unapproved: Upgrade = try command(["upgrade", "--no-approve"], "[upgrade]\nruntimes = \"ios\"")
         #expect(unapproved.runtimeSelection == nil)
+        #expect(try command(["upgrade"], "[upgrade]\nreplace-runtimes = true", as: Upgrade.self)
+            .replaceRuntimes == true)
     }
 
     @Test func `an empty config changes nothing and a broken one fails the command`() throws {

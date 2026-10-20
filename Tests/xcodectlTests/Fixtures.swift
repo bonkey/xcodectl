@@ -93,6 +93,7 @@ func makeSimctlOutput(
     for runtime in runtimes {
         root[runtime.id] = [
             "platformIdentifier": runtime.platform,
+            "runtimeIdentifier": "\(runtime.platform)-\(runtime.version)",
             "version": runtime.version,
             "build": runtime.build,
             "state": runtime.state,

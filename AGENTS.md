@@ -33,7 +33,10 @@ The older `diskImage` format (back to iOS 16, tvOS 16, watchOS 9, visionOS 1) is
 behind the same `ADCDownloadAuth` ticket as an Xcode download; `install <platform>` fetches it with the
 downloader and registers it with `simctl runtime add`. Installer packages (iOS 15 and older) are not read.
 `upgrade` runs `install --runtimes` with the platforms that have a ready runtime, so each new Xcode
-gets its own runtimes before the old Xcode and the runtimes only it uses go.
+gets its own runtimes before the old Xcode and the runtimes only it uses go. `--replace-runtimes` then
+deletes every ready runtime no installed Xcode uses, and the simulator devices that leaves without a
+runtime: a device names its runtime by version (`runtimeIdentifier`), so one that another build of
+that version still serves stays.
 Security keys: WebKit refuses WebAuthn for apple.com in third-party apps, so a user script
 routes `navigator.credentials.get` to LibFido2Swift (libfido2 over USB) and returns the
 assertion into the requesting iframe.
@@ -65,7 +68,8 @@ Sources/xcodectl/
 - Swift 5 language mode, macOS 14+. Dependencies: swift-argument-parser, Noora, unxip, bonkey/LibFido2Swift, huggingface/AnyLanguageModel (no traits). Do not add
   more without a reason that survives "could Foundation do this".
 - No external processes except `/usr/bin/sudo` (approve, CLT install, select, install and remove fallbacks) and, for
-  simulator runtimes only, that Xcode's `xcodebuild` and `xcrun simctl`. Networking is URLSession; XIP
+  simulator runtimes and the simulators on them only, that Xcode's `xcodebuild` and `xcrun simctl`
+  (`simctl list devices` and `simctl delete` for the simulators). Networking is URLSession; XIP
   expansion is libunxip, runtime `.aar` expansion AppleArchive.
 - Cryptex simulator runtimes are the one thing this tool does not download itself, with one exception.
   Apple delivers them as MobileAssets into a SIP-protected store that only `xcodebuild -downloadPlatform`
