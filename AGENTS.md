@@ -32,6 +32,8 @@ expands its disk image in-process with AppleArchive and registers it with `simct
 The older `diskImage` format (back to iOS 16, tvOS 16, watchOS 9, visionOS 1) is a `.dmg`
 behind the same `ADCDownloadAuth` ticket as an Xcode download; `install <platform>` fetches it with the
 downloader and registers it with `simctl runtime add`. Installer packages (iOS 15 and older) are not read.
+`upgrade` runs `install --runtimes` with the platforms that have a ready runtime, so each new Xcode
+gets its own runtimes before the old Xcode and the runtimes only it uses go.
 Security keys: WebKit refuses WebAuthn for apple.com in third-party apps, so a user script
 routes `navigator.credentials.get` to LibFido2Swift (libfido2 over USB) and returns the
 assertion into the requesting iframe.

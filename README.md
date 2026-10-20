@@ -18,13 +18,14 @@ xcodectl install [<ver>...] [--select] [--no-approve] [--no-clt] [--no-login]
                  [--runtimes all|ios,watchos,...|none]
                                    several versions download and expand in parallel; so do separate runs
 xcodectl upgrade [<ver>] [--minor] [--keep] [--beta] [--dry-run]
-                 [--no-approve] [--no-clt] [--no-login]
-                                   newest release of each installed major (27.0 -> 27.2), then the
-                                   old one is removed and the new one selected if the old one was;
+                 [--no-approve] [--no-clt] [--no-login] [--runtimes all|ios,watchos,...|none]
+                                   newest release of each installed major (27.0 -> 27.2) with its
+                                   simulator runtimes for the platforms you have, then the old one
+                                   is removed and the new one selected if the old one was;
                                    --minor: newest build of the major.minor (27.0 -> 27.0.1);
                                    --keep: old ones stay; --beta: betas and rcs move too, to the
                                    newest beta or final of their line; <ver> picks the installed
-                                   ones to upgrade (27 is every 27.x)
+                                   ones to upgrade (27 is every 27.x); --runtimes: other platforms
 xcodectl install-clt [<ver>]       only the Command Line Tools of that Xcode version (sudo); no login needed
 xcodectl approve [<ver>]           license + first launch + developer mode (sudo); install does this by default
 xcodectl select [<ver>]            xcode-select (sudo)
@@ -329,6 +330,9 @@ xcodectl install 27.1 --runtimes all      # every platform, about 23 GB
 ```
 
 `--runtimes none` installs none, for a run that overrides a `runtimes` default from the config file.
+`xcodectl upgrade` does this by itself: each new Xcode gets its runtime for every platform that has
+a runtime installed, before the old Xcode and the runtimes only it uses go. `--runtimes` names other
+platforms, or `none`.
 
 Runtimes are several gigabytes each, and a deleted one only gives its space back once the last
 registration referencing it is gone. `remove` says which happened:
@@ -445,7 +449,8 @@ plain = true
 A flag typed on the command line wins over its table, which wins over the shared keys. A value
 that does not fit the run is ignored: with `clt = false` under `[install]`, `xcodectl install ios`
 installs the runtime as if the key were not there. `upgrade` reads `[upgrade]` only; the `install`
-and `remove` it runs inside do not read the file.
+and `remove` it runs inside do not read the file. A shared `runtimes` key reaches both `install` and
+`upgrade`; `runtimes = "none"` under `[upgrade]` keeps upgrades from installing runtimes.
 An unknown key or table, or a value a flag cannot take, fails every command that reads the file;
 `xcodectl config check` lists every problem, or every setting the file makes, and exits 1 when
 something is wrong.

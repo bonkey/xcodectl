@@ -473,6 +473,14 @@ struct RuntimeSelectionTests {
         #expect(RuntimeSelection(argument: " iOS , watchOS , ios ")?.platforms == [.ios, .watchos])
     }
 
+    @Test func `the argument reads back as the same selection`() {
+        for text in ["all", "none", "ios", "watchos,ios"] {
+            let selection = RuntimeSelection(argument: text)
+            #expect(selection.flatMap { RuntimeSelection(argument: $0.argument) } == selection, "\(text)")
+        }
+        #expect(RuntimeSelection(argument: "watchos,ios")?.argument == "watchos,ios")
+    }
+
     @Test func `unknown platform is rejected`() {
         #expect(RuntimeSelection(argument: "ios,android") == nil)
         #expect(RuntimeSelection(argument: "") == nil)

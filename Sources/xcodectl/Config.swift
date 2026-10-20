@@ -472,6 +472,7 @@ extension Upgrade: Configurable {
         .flag("approve", \.approve, default: true),
         .flag("clt", \.clt, default: true),
         .flag("login", \.autologin, default: true),
+        .option("runtimes", \.runtimeSelection, example: "ios,watchos"),
     ]
 }
 

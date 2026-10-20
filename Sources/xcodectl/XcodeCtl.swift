@@ -985,7 +985,9 @@ struct Upgrade: AsyncParsableCommand {
         a final never moves to a prerelease. Once the new Xcode is installed and approved, the old one is \
         selected out of the way if it was active, then removed with the simulator runtimes only it \
         uses; --keep leaves it installed. A newest release already installed next to an older one \
-        counts as installed, so a run that failed while removing finishes the job when run again.
+        counts as installed, so a run that failed while removing finishes the job when run again. \
+        Before the old one goes, the new Xcode gets its simulator runtime for each platform that has a \
+        runtime installed; --runtimes names the platforms instead, --runtimes none skips them.
         """)
 
     @Argument(
@@ -1018,8 +1020,23 @@ struct Upgrade: AsyncParsableCommand {
         help: "Open the sign-in window when the Apple session is missing or expired (only at a terminal).")
     var autologin: Bool?
 
+    @Option(
+        name: .customLong("runtimes"),
+        help: """
+        Simulator runtimes for each new Xcode: 'all', a list like 'ios,watchos', or 'none'. \
+        Default: the platforms that have a runtime installed.
+        """)
+    var runtimeSelection: RuntimeSelection?
+
     @Flag(help: "Only print what would be installed and removed.")
     var dryRun = false
+
+    func validate() throws {
+        // Runtimes install through the new Xcode's own xcodebuild, which an unapproved Xcode refuses to run.
+        guard (runtimeSelection?.platforms ?? []).isEmpty || approve != false else {
+            throw Fail("--runtimes needs an approved Xcode; drop --no-approve")
+        }
+    }
 
     func run() async throws {
         let installed = try await targets()
@@ -1051,12 +1068,31 @@ struct Upgrade: AsyncParsableCommand {
             let then = keep == true ? "" : "; then removed" + (active ? ", \(pair.to.display) selected" : "")
             ui.info(InfoAlert(stringLiteral: "\(olds) -> Xcode \(pair.to.display) \(pair.to.build)\(then)"))
         }
+        var registered: [InstalledRuntime] = []
+        if runtimeSelection == nil {
+            if approve == false {
+                ui.info(InfoAlert(stringLiteral: "simulator runtimes skipped: they need an approved Xcode"))
+            } else {
+                do {
+                    registered = try SimCtl.runtimes()
+                } catch {
+                    ui.warning(WarningAlert(stringLiteral:
+                        "cannot tell which simulator runtimes are installed (\(error)); --runtimes names them"))
+                }
+            }
+        }
+        let runtimes = newRuntimes(registered: registered)
+        if let runtimes {
+            ui.info(InfoAlert(stringLiteral:
+                "runtimes for the new Xcode: \(runtimes.platforms.map(\.display).joined(separator: ", "))"))
+        }
         guard !dryRun else {
             return
         }
         // With one target that replaces the active Xcode, `install --select` makes the switch itself.
         let selectOnInstall = keep != true && plan.count == 1 && wasActive[0]
-        try await Install.parse(installArguments(plan.map(\.to.build), select: selectOnInstall)).run()
+        try await Install.parse(installArguments(plan.map(\.to.build), select: selectOnInstall, runtimes: runtimes))
+            .run()
         guard keep != true else {
             return
         }
@@ -1073,9 +1109,24 @@ struct Upgrade: AsyncParsableCommand {
     }
 
     /// The `install` invocation for these builds, carrying the flags that were turned off.
-    func installArguments(_ builds: [String], select: Bool) -> [String] {
+    func installArguments(_ builds: [String], select: Bool, runtimes: RuntimeSelection? = nil) -> [String] {
         builds + (approve == false ? ["--no-approve"] : []) + (clt == false ? ["--no-clt"] : [])
             + (autologin == false ? ["--no-login"] : []) + (select ? ["--select"] : [])
+            + (runtimes.map { ["--runtimes", $0.argument] } ?? [])
+    }
+
+    /// The runtimes `install` adds to each new Xcode, nil for none: the ones --runtimes names, else
+    /// one for every platform that has a ready runtime. An unapproved Xcode cannot install them.
+    func newRuntimes(registered: [InstalledRuntime]) -> RuntimeSelection? {
+        if let runtimeSelection {
+            return runtimeSelection.platforms.isEmpty ? nil : runtimeSelection
+        }
+        guard approve != false else {
+            return nil
+        }
+        let platforms = Set(registered.filter(\.isReady).compactMap(\.platform))
+        return RuntimeSelection(argument: RuntimePlatform.allCases.filter(platforms.contains).map(\.rawValue)
+            .joined(separator: ","))
     }
 
     /// The installed Xcodes to upgrade: every one, or those matching the version: "27" is every 27.x,
@@ -1359,6 +1410,11 @@ struct RuntimeSelection: ExpressibleByArgument, Equatable {
     let platforms: [RuntimePlatform]
     /// `all` becomes one `-downloadAllPlatforms` run rather than one run per platform.
     let isAll: Bool
+
+    /// The selection as `--runtimes` takes it.
+    var argument: String {
+        isAll ? "all" : platforms.isEmpty ? "none" : platforms.map(\.rawValue).joined(separator: ",")
+    }
 }
 
 // MARK: - RuntimeTarget

@@ -87,6 +87,38 @@ struct CommandGrammarTests {
         #expect(off.installArguments(["27A1"], select: false) == ["27A1", "--no-approve", "--no-clt", "--no-login"])
     }
 
+    @Test func `upgrade forwards the runtimes to install`() throws {
+        let plain = try #require(XcodeCtl.parseAsRoot(["upgrade"]) as? Upgrade)
+        let ios = RuntimeSelection(argument: "ios,watchos")
+        #expect(plain.installArguments(["27A1"], select: false, runtimes: ios) == ["27A1", "--runtimes", "ios,watchos"])
+        #expect(plain.installArguments(["27A1"], select: false, runtimes: RuntimeSelection(argument: "all"))
+            == ["27A1", "--runtimes", "all"])
+    }
+
+    /// iOS twice and tvOS, one of the iOS ones and watchOS not ready.
+    @Test func `upgrade defaults to the platforms that have a ready runtime`() throws {
+        let registered = try SimCtl.parse(makeSimctlOutput([
+            ("A", "com.apple.platform.iphonesimulator", "27.0", "24A434", "Ready", 1, "/a.asset/AssetData"),
+            ("B", "com.apple.platform.iphonesimulator", "27.1", "24A94401", "Unusable", 1, "/b.asset/AssetData"),
+            ("C", "com.apple.platform.appletvsimulator", "27.0", "24J360", "Ready", 1, "/c.asset/AssetData"),
+            ("D", "com.apple.platform.watchsimulator", "27.0", "24R360", "Unusable", 1, "/d.asset/AssetData"),
+        ]))
+        let plain = try #require(XcodeCtl.parseAsRoot(["upgrade"]) as? Upgrade)
+        #expect(plain.newRuntimes(registered: registered)?.platforms == [.ios, .tvos])
+        #expect(plain.newRuntimes(registered: []) == nil)
+        let unapproved = try #require(XcodeCtl.parseAsRoot(["upgrade", "--no-approve"]) as? Upgrade)
+        #expect(unapproved.newRuntimes(registered: registered) == nil)
+        let named = try #require(XcodeCtl.parseAsRoot(["upgrade", "--runtimes", "visionos"]) as? Upgrade)
+        #expect(named.newRuntimes(registered: registered)?.platforms == [.visionos])
+        let none = try #require(XcodeCtl.parseAsRoot(["upgrade", "--runtimes", "none"]) as? Upgrade)
+        #expect(none.newRuntimes(registered: registered) == nil)
+    }
+
+    @Test func `upgrade runtimes need an approved Xcode`() {
+        #expect(throws: Error.self) { try XcodeCtl.parseAsRoot(["upgrade", "--runtimes", "ios", "--no-approve"]) }
+        #expect(throws: Never.self) { try XcodeCtl.parseAsRoot(["upgrade", "--runtimes", "none", "--no-approve"]) }
+    }
+
     @Test func `the information commands take JSON`() throws {
         #expect(try (XcodeCtl.parseAsRoot(["list", "--json"]) as? List)?.json == true)
         #expect(try (XcodeCtl.parseAsRoot(["list", "ios", "--all", "--json"]) as? List)?.json == true)

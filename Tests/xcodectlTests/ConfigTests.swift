@@ -96,6 +96,7 @@ struct ConfigTests {
         # clt = true
         # json = false
         # login = true
+        # runtimes = "all"
 
         [auth.status]
         # json = false
@@ -142,6 +143,7 @@ struct ConfigTests {
         # approve = true
         # clt = true
         # login = true
+        # runtimes = "ios,watchos"
 
         [remove]
         # keep-runtimes = false
@@ -244,6 +246,14 @@ struct ConfigTests {
         #expect(try command(["upgrade"], "[install]\napprove = false", as: Upgrade.self).approve == nil)
         let upgrade: Upgrade = try command(["upgrade"], "[upgrade]\napprove = false\nlogin = false")
         #expect(upgrade.installArguments(["27A1"], select: false) == ["27A1", "--no-approve", "--no-login"])
+    }
+
+    @Test func `upgrade takes runtimes from its table, and only for an approved Xcode`() throws {
+        #expect(try command(["upgrade"], "[upgrade]\nruntimes = \"none\"", as: Upgrade.self).runtimeSelection?
+            .platforms == [])
+        #expect(try command(["upgrade"], "runtimes = \"ios\"", as: Upgrade.self).runtimeSelection?.platforms == [.ios])
+        let unapproved: Upgrade = try command(["upgrade", "--no-approve"], "[upgrade]\nruntimes = \"ios\"")
+        #expect(unapproved.runtimeSelection == nil)
     }
 
     @Test func `an empty config changes nothing and a broken one fails the command`() throws {
