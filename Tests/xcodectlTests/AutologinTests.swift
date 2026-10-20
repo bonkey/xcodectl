@@ -92,6 +92,29 @@ struct AutologinTests {
         }
     }
 
+    @Test func `sign-in window starts with the trust cookies, not the login or the ticket`() {
+        let trust = makeCookie("DES54214b87a1d9ccef59b805e996e84ae0d", expires: Date() + 30 * 86400)
+        let account = makeCookie("acn01", expires: Date() + 365 * 86400)
+        let sso = makeCookie("aasp")
+        let cookies = [
+            trust, account, sso,
+            makeCookie("myacinfo"),
+            makeCookie("ADCDownloadAuth", expires: Date() + 3600),
+            makeCookie("dslang", expires: Date() - 60),
+        ]
+        #expect(Session.seed(cookies) == [trust, account, sso])
+    }
+
+    @Test func `cookie survives the trip through HTTPCookie`() throws {
+        let cookie = try Cookie(#require(HTTPCookie(properties: [
+            .name: "DES54214b87a1d9ccef59b805e996e84ae0d", .value: "\"v=1\"", .domain: ".idmsa.apple.com", .path: "/",
+            .secure: "TRUE", .expires: Date(timeIntervalSince1970: 1_795_000_000),
+        ])))
+        #expect(cookie.secure)
+        let back = try Cookie(#require(cookie.httpCookie))
+        #expect(back == cookie)
+    }
+
     private func makeCookie(_ name: String, expires: Date? = nil) -> Cookie {
         var properties: [HTTPCookiePropertyKey: Any] = [.name: name, .value: "v", .domain: ".apple.com", .path: "/"]
         if let expires {

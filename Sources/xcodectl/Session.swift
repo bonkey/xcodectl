@@ -34,6 +34,17 @@ struct Cookie: Codable, Equatable {
         return expires < Date().timeIntervalSince1970 + 300
     }
 
+    var httpCookie: HTTPCookie? {
+        var properties: [HTTPCookiePropertyKey: Any] = [.domain: domain, .path: path, .name: name, .value: value]
+        if let expires {
+            properties[.expires] = Date(timeIntervalSince1970: expires)
+        }
+        if secure {
+            properties[.secure] = "TRUE"
+        }
+        return HTTPCookie(properties: properties)
+    }
+
     /// RFC 6265 domain match: "developer.apple.com" gets ".apple.com" and "developer.apple.com" cookies.
     func matches(host: String) -> Bool {
         let d = domain.hasPrefix(".") ? String(domain.dropFirst()) : domain
@@ -75,6 +86,13 @@ enum Session {
             return nil
         }
         return try (JSONDecoder().decode([Cookie].self, from: data), .keychain)
+    }
+
+    /// The stored cookies a sign-in window starts with, so Apple recognizes the browser it trusted (`DES…`) and
+    /// usually signs it in without input. The login cookie and the download ticket stay out: the window waits for a
+    /// fresh login cookie.
+    static func seed(_ cookies: [Cookie]) -> [Cookie] {
+        cookies.filter { !$0.isExpired && $0.name != loginCookie && $0.name != ticketCookie }
     }
 
     static func save(_ cookies: [Cookie]) throws {

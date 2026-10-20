@@ -8,7 +8,9 @@ self-hosted CI Macs. README.md covers usage; this file covers how to work on the
 No Apple auth code. `auth login` opens a WKWebView (throwaway data store) on
 developer.apple.com; when Apple's portal reports a signed-in session (`myacinfo` cookie on the
 downloads page) the `apple.com` cookies go into the login Keychain as one generic-password item
-(service `xcodectl`, account `apple-session`). A download needs one short-lived cookie,
+(service `xcodectl`, account `apple-session`). The next sign-in seeds the store with those cookies,
+all but `myacinfo` and the ticket, and keeps the window hidden: Apple signs the browser it trusts
+in by itself. The window shows when a security key is asked for or after 15 s without a session. A download needs one short-lived cookie,
 `ADCDownloadAuth` (~24 h); `install` fetches a fresh one by POSTing
 `developer.apple.com/services-account/QH65B2/downloadws/listDownloads.action` with the stored
 session. Version metadata and direct XIP URLs come from `xcodereleases.com/data.json`.

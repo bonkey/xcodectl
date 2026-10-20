@@ -388,6 +388,10 @@ When the session is missing or Apple no longer accepts it, `install`, `upgrade`,
 terminal (never with `--json`) and only for the Keychain session, not for `XCODECTL_SESSION`;
 `--no-login` makes them fail instead.
 
+The window starts with the cookies of the last session and stays hidden: while Apple remembers
+that browser, it signs you in again without any input. The window shows when Apple asks for your
+security key, or after 15 seconds without a session, for instance when Apple wants your password.
+
 ## CI (self-hosted runner)
 
 On your Mac: `xcodectl auth export --copy`. It asks Apple whether the session still holds and
@@ -407,8 +411,9 @@ Over plain ssh the login Keychain is locked (macOS gives ssh logins their own se
 so `auth import` and `install` fail with "User interaction is not allowed". Run
 `security unlock-keychain` in that ssh session first, do the import from a GUI session (Screen
 Sharing), or use `XCODECTL_SESSION`. Runners launched in the logged-in session are not affected.
-Apple's login session lasts weeks; `xcodectl auth status` asks Apple whether it still holds and
-exits 1 when not (`--json` adds `signedIn` and the reason on stdout). When it has expired,
+Apple's login session lasts from a day to a few weeks, depending on the region;
+`xcodectl auth status` asks Apple whether it still holds and exits 1 when not (`--json` adds
+`signedIn` and the reason on stdout). When it has expired,
 `xcodectl auth export --copy` signs you in again and copies the new session in one go;
 `auth status` does the same without printing it. The window opens only when someone is at
 the terminal and only for the Keychain session, not for `XCODECTL_SESSION`.
@@ -456,8 +461,10 @@ something is wrong.
   27.0 betas). Versions the page does not list (before 14) show `from 12.5`, without a mark. When
   the page cannot be fetched, its cached copy stands in; without one, every range reads `from …`
   and only a macOS that is too old gets its `✗`.
-- Auth: Apple's portal sets a long-lived login session in the window; the tool keeps only the
-  `apple.com` cookies, in the Keychain. WebKit refuses WebAuthn for apple.com in third-party apps,
+- Auth: Apple's portal sets a login session in the window; the tool keeps only the `apple.com`
+  cookies, in the Keychain. The next sign-in window starts with all of them except the login cookie
+  (`myacinfo`) and the download ticket, so Apple sees a browser it trusts and usually signs it in
+  without input. WebKit refuses WebAuthn for apple.com in third-party apps,
   so the page's `navigator.credentials.get` is routed to libfido2, which drives the security key.
   Each download needs a ~24 h `ADCDownloadAuth` cookie, which the tool fetches itself from Apple's
   download-list endpoint using that session.

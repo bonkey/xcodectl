@@ -7,7 +7,8 @@ import Foundation
 import LibFido2Swift
 import WebKit
 
-/// One window with a WKWebView on a throwaway data store. `run()` returns the apple.com cookies
+/// One window with a WKWebView on a throwaway data store, seeded with the stored session's cookies so Apple
+/// recognizes a browser it trusted. `run()` returns the apple.com cookies
 /// once Apple's portal reports a signed-in session (`myacinfo` present on the downloads page).
 ///
 /// WebKit refuses WebAuthn for domains a third-party app cannot associate with (apple.com), so
@@ -15,7 +16,9 @@ import WebKit
 /// talks to the security key over USB and hands the signed assertion back to the page.
 @MainActor
 final class LoginWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKScriptMessageHandler {
-    override init() {
+    /// `seed` goes into the data store before the first page loads.
+    init(seed: [Cookie] = []) {
+        self.seed = seed
         let config = WKWebViewConfiguration()
         config.websiteDataStore = .nonPersistent()
         config.userContentController.addUserScript(WKUserScript(
@@ -40,18 +43,28 @@ final class LoginWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKScr
     static let startURL = URL(string: "https://developer.apple.com/download/all")!
     static let title = "xcodectl — sign in to Apple Developer"
 
-    /// Shows the window and waits until signed in (cookies) or the window is closed (throws).
+    /// How long a seeded window stays hidden while Apple signs the browser in on its own.
+    static let silentWait: Duration = .seconds(15)
+
+    /// Waits until signed in (cookies) or the window is closed (throws). A seeded window starts hidden, because
+    /// Apple signs a browser it knows in without input; it shows when Apple asks for a security key or no session
+    /// arrives within `silentWait`. An empty seed shows the window at once.
     func run() async throws -> [HTTPCookie] {
-        let app = NSApplication.shared
-        app.setActivationPolicy(.regular)
+        let store = webView.configuration.websiteDataStore.httpCookieStore
+        for cookie in seed.compactMap(\.httpCookie) {
+            await store.setCookie(cookie)
+        }
         webView.load(URLRequest(url: Self.startURL))
-        window.makeKeyAndOrderFront(nil)
-        app.activate(ignoringOtherApps: true)
+        if seed.isEmpty {
+            show()
+        }
         defer {
             webView.configuration.userContentController.removeScriptMessageHandler(forName: "webauthn")
             window.orderOut(nil)
-            app.setActivationPolicy(.prohibited)
+            NSApplication.shared.setActivationPolicy(.prohibited)
         }
+        let clock = ContinuousClock()
+        let showAt = clock.now + Self.silentWait
         while true {
             try await Task.sleep(for: .seconds(1))
             if closed {
@@ -59,6 +72,9 @@ final class LoginWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKScr
             }
             if let cookies = await signedInCookies() {
                 return cookies
+            }
+            if clock.now >= showAt {
+                show()
             }
         }
     }
@@ -115,6 +131,7 @@ final class LoginWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKScr
             return
         }
         let frame = message.frameInfo // the promise lives in the frame that asked (Apple's auth iframe)
+        show() // the PIN prompt is a sheet on the window, and the user has to know to touch the key
         Task {
             window.title = "Touch your security key…"
             defer { window.title = Self.title }
@@ -196,9 +213,11 @@ final class LoginWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKScr
     })();
     """
 
+    private let seed: [Cookie]
     private let window: NSWindow
     private let webView: WKWebView
     private var closed = false
+    private var shown = false
 
     private var debug: Bool {
         ProcessInfo.processInfo.environment["XCODECTL_DEBUG"] != nil
@@ -208,6 +227,18 @@ final class LoginWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKScr
     private static func js(_ s: String) -> String {
         let array = String(decoding: try! JSONSerialization.data(withJSONObject: [s]), as: UTF8.self)
         return String(array.dropFirst().dropLast())
+    }
+
+    /// Brings the window up for input, once.
+    private func show() {
+        guard !shown else {
+            return
+        }
+        shown = true
+        let app = NSApplication.shared
+        app.setActivationPolicy(.regular)
+        window.makeKeyAndOrderFront(nil)
+        app.activate(ignoringOtherApps: true)
     }
 
     private func assert(

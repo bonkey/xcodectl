@@ -184,11 +184,16 @@ struct Login: AsyncParsableCommand {
         abstract: "Sign in to Apple Developer in a window; keeps the session in your Keychain.",
         discussion: "Two-factor codes and security keys (YubiKey etc.) work; the key is driven by the tool itself.")
 
-    /// Signs in through the window and stores the session, download ticket included, in the Keychain.
-    /// Progress goes to `ui`; `stderrUI` keeps stdout clean for a command that prints data.
+    /// Signs in through the window, hidden while Apple needs no input, and stores the session, download ticket
+    /// included, in the Keychain. Progress goes to `ui`; `stderrUI` keeps stdout clean for a command that prints data.
     static func signIn(ui: Noorable = xcodectl.ui) async throws -> [Cookie] {
-        let window = await MainActor.run { LoginWindow() }
-        let cookies = try await window.run().map(Cookie.init)
+        // Best effort: an unreadable or locked Keychain only costs the trusted-browser shortcut.
+        let stored = (try? Keychain.read()).flatMap { try? JSONDecoder().decode([Cookie].self, from: $0) } ?? []
+        let seed = Session.seed(stored)
+        let window = await MainActor.run { LoginWindow(seed: seed) }
+        let cookies = try await ui.progressStep(message: "Signing in to Apple Developer") { _ in
+            try await window.run().map(Cookie.init)
+        }
         let withTicket = try await ui.progressStep(message: "Fetching download ticket") { _ in
             try await Session.refreshTicket(cookies)
         }
@@ -203,7 +208,7 @@ struct Login: AsyncParsableCommand {
             return nil
         }
         return {
-            ui.info(InfoAlert(stringLiteral: "No valid Apple session; opening the sign-in window"))
+            ui.info(InfoAlert(stringLiteral: "No valid Apple session; signing in again"))
             return try await signIn()
         }
     }
@@ -215,7 +220,7 @@ struct Login: AsyncParsableCommand {
             return nil
         }
         return {
-            stderrUI.info(InfoAlert(stringLiteral: "No valid Apple session; opening the sign-in window"))
+            stderrUI.info(InfoAlert(stringLiteral: "No valid Apple session; signing in again"))
             return try await signIn(ui: stderrUI)
         }
     }
