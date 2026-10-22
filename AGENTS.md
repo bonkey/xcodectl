@@ -24,13 +24,13 @@ only places that call `sudo`, apart from two fallbacks for a Mac that keeps its 
 and `remove` deletes with `sudo rm`.
 Simulator runtimes: the catalog is Apple's public `index2.dvtdownloadableindex`. The
 `cryptexDiskImage` format (iOS 18, tvOS 18, watchOS 11, visionOS 2 and newer) needs no Apple account:
-`install <platform>` (or `install --runtimes ios,watchos|all`) hands the download to that Xcode's
+`runtime install <platform>` (or `install --runtimes ios,watchos|all`) hands the download to that Xcode's
 `xcodebuild`. Xcode 27 and newer refuse the cryptexes before iOS 26 (their index entries and assets
-name no architectures), so through those `install <platform>` looks the build up on Apple's public
+name no architectures), so through those `runtime install <platform>` looks the build up on Apple's public
 asset server (`gdmf.apple.com/v2/assets`), downloads the encrypted `.aar` with the downloader,
 expands its disk image in-process with AppleArchive and registers it with `simctl runtime add`.
 The older `diskImage` format (back to iOS 16, tvOS 16, watchOS 9, visionOS 1) is a `.dmg`
-behind the same `ADCDownloadAuth` ticket as an Xcode download; `install <platform>` fetches it with the
+behind the same `ADCDownloadAuth` ticket as an Xcode download; `runtime install <platform>` fetches it with the
 downloader and registers it with `simctl runtime add`. Installer packages (iOS 15 and older) are not read.
 `upgrade` runs `install --runtimes` with the platforms that have a ready runtime, so each new Xcode
 gets its own runtimes before the old Xcode and the runtimes only it uses go. `--replace-runtimes` then
@@ -47,7 +47,7 @@ assertion into the requesting iframe.
 Sources/xcodectl/
   XcodeCtl.swift     commands, pickers, tables (Noora for TUI)
   Releases.swift     data.json model, version query parsing/matching, listing
-  JSONOutput.swift   `--json` shapes of list, installed and auth status, built from the same inputs as the tables
+  JSONOutput.swift   `--json` shapes of list, installed, runtime list, runtime installed and auth status, built from the same inputs as the tables
   ReleaseNotes.swift notes as Markdown (URL + ".md"), terminal rendering, plain text, diff of two, model summary and answers from the whole notes (only file importing AnyLanguageModel)
   HostedModel.swift  provider, base URL and API key from options and environment, default model
   Session.swift      cookie model, Keychain, XCODECTL_SESSION, download-ticket refresh
@@ -73,7 +73,7 @@ Sources/xcodectl/
   expansion is libunxip, runtime `.aar` expansion AppleArchive.
 - Cryptex simulator runtimes are the one thing this tool does not download itself, with one exception.
   Apple delivers them as MobileAssets into a SIP-protected store that only `xcodebuild -downloadPlatform`
-  can write, so `install <platform>` drives that, aimed at a chosen Xcode with `DEVELOPER_DIR` so it needs
+  can write, so `runtime install <platform>` drives that, aimed at a chosen Xcode with `DEVELOPER_DIR` so it needs
   neither `xcode-select` nor sudo. The exception: through Xcode 27 or newer, a cryptex whose index entry
   has no `architectures` (everything before iOS 26) is fetched from the asset server, expanded to its
   `.dmg` and added with `simctl runtime add`, because Xcode 27 requires architectures in both the index
@@ -102,7 +102,7 @@ Sources/xcodectl/
   the whole notes in one request; do not split them to fit a small model.
 - Errors: throw `Fail("one actionable line")`; ArgumentParser prints it and exits 1.
 - Pickers only when stdin and stdout are a TTY; otherwise a missing argument is an error.
-- `--json` (`list`, `installed`, `auth status`) prints the table's facts as typed values and nothing
+- `--json` (`list`, `installed`, `runtime list`, `runtime installed`, `auth status`) prints the table's facts as typed values and nothing
   else on stdout; nothing found is `[]`. Its keys are a contract for scripts and agents: renaming or
   removing one is a breaking change, and `JSONOutputTests` pins them.
 - Config file: every configurable flag is a `Bool?` with `inversion: .prefixedNo`, named for what it turns on,

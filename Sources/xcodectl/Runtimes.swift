@@ -316,7 +316,7 @@ enum Runtimes {
         }
         guard !candidates.isEmpty else {
             throw Fail("no \(platform.display) runtime matching \"\(raw)\"; "
-                + "see `xcodectl list \(platform.rawValue) --all`")
+                + "see `xcodectl runtime list \(platform.rawValue) --all`")
         }
         return candidates.first { !$0.isBeta } ?? candidates[0]
     }

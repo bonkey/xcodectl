@@ -110,7 +110,7 @@ struct Config: Equatable {
             "# xcodectl defaults: one table per command, keys named like its flags without `--`.",
             "# A flag typed on the command line wins over its [command] table, which wins over the",
             "# shared keys above the first table. A value that does not fit the run, such as",
-            "# `clt = false` for `install ios`, is ignored. An unknown key or table fails every command.",
+            "# `select = true` for `install 27 26`, is ignored. An unknown key or table fails every command.",
             "# Uncomment a line to set it. A flag shows its default, an option an example;",
             "# `xcodectl <command> --help` explains them. `xcodectl config check` reads the file back.",
             "",
@@ -352,7 +352,7 @@ extension Configurable {
     }
 
     /// Fills in what the command line left out. A value the command's own `validate()` rejects next to
-    /// what was typed, such as `clt = false` for a runtime install, is skipped.
+    /// what was typed, such as `select = true` for two versions, is skipped.
     mutating func applyConfig(_ config: Config) {
         for setting in Self.settings {
             guard let value = config.value(setting.key.name, in: Self.configTable) else {
@@ -419,7 +419,6 @@ extension List: Configurable {
     static let settings: [ConfigSetting<List>] = [
         .flag("stable", \.stable, default: false),
         .flag("beta", \.beta, default: false),
-        .flag("all", \.all, default: false),
         .flag("json", \.json, default: false),
         .option("order", \.order, example: "by-version", values: ["by-version", "by-date"]) {
             ["by-version": .byVersion, "by-date": .byDate][$0]
@@ -485,4 +484,41 @@ extension Remove: Configurable {
     ]
 }
 
-// MARK: - Prune + Configurable
+// MARK: - RuntimeCommand.List + Configurable
+
+extension RuntimeCommand.List: Configurable {
+    static let configTable = "runtime.list"
+    static let settings: [ConfigSetting<RuntimeCommand.List>] = [
+        .flag("stable", \.stable, default: false),
+        .flag("beta", \.beta, default: false),
+        .flag("all", \.all, default: false),
+        .flag("json", \.json, default: false),
+    ]
+}
+
+// MARK: - RuntimeCommand.ListInstalled + Configurable
+
+extension RuntimeCommand.ListInstalled: Configurable {
+    static let configTable = "runtime.installed"
+    static let settings: [ConfigSetting<RuntimeCommand.ListInstalled>] = [
+        .flag("json", \.json, default: false),
+    ]
+}
+
+// MARK: - RuntimeCommand.Install + Configurable
+
+extension RuntimeCommand.Install: Configurable {
+    static let configTable = "runtime.install"
+    static let settings: [ConfigSetting<RuntimeCommand.Install>] = [
+        .flag("login", \.autologin, default: true),
+    ]
+}
+
+// MARK: - RuntimeCommand.Prune + Configurable
+
+extension RuntimeCommand.Prune: Configurable {
+    static let configTable = "runtime.prune"
+    static let settings: [ConfigSetting<RuntimeCommand.Prune>] = [
+        .flag("unused", \.unused, default: false),
+    ]
+}

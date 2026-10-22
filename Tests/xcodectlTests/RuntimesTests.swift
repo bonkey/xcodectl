@@ -204,7 +204,7 @@ struct RuntimesTests {
         let error = try #require(throws: Error.self) {
             try Runtimes.resolve("99.0", platform: .ios, in: runtimes)
         }
-        #expect("\(error)".contains("`xcodectl list ios --all`"), "\(error)")
+        #expect("\(error)".contains("`xcodectl runtime list ios --all`"), "\(error)")
     }
 
     // MARK: - Host requirements

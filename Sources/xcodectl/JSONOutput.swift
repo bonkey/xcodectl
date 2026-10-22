@@ -150,7 +150,7 @@ func installedJSON(
 
 // MARK: - InstalledRuntimeJSON
 
-/// One simulator runtime registration of `installed runtimes --json`.
+/// One simulator runtime registration of `runtime installed --json`.
 struct InstalledRuntimeJSON: Encodable, Equatable {
     let identifier: String
     let platform: String?

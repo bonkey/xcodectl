@@ -34,12 +34,15 @@ xcodectl approve [<ver>]           license + first launch + developer mode (sudo
 xcodectl select [<ver>]            xcode-select (sudo)
 xcodectl remove <ver> [--keep-runtimes]
                                    also deletes the simulator runtimes no other installed Xcode uses
-xcodectl list <platform>|runtimes  simulator runtimes Apple offers; --stable/--beta, --all
-xcodectl installed <platform>|runtimes
+xcodectl runtime list [<platform>]
+                                   simulator runtimes Apple offers; --stable/--beta, --all
+xcodectl runtime installed [<platform>]
                                    runtimes installed, including leftovers simctl hides
-xcodectl install <platform> [<ver>] [--xcode <ver>]
-xcodectl remove <platform>|runtimes [<ver>]
-xcodectl prune [--dry-run]         leftover runtime registrations that still hold disk space
+xcodectl runtime install <platform> [<ver>] [--xcode <ver>]
+xcodectl runtime remove [<platform>] [<ver>]
+xcodectl runtime prune [--unused] [--dry-run]
+                                   leftover runtime registrations that still hold disk space;
+                                   --unused: also every runtime no installed Xcode uses
 xcodectl config init | check       defaults for any flag in ~/.config/xcodectl/config.toml
 xcodectl auth export [--no-login] [--copy] | import [--paste]
                                    move the session to a runner; both check it with Apple first;
@@ -54,7 +57,8 @@ never a default.
 `<ver>` is forgiving: `26.1`, `27`, `27 rc`, `27-rc1`, `27 beta 3`, `27A266a`, `latest`,
 `latest-beta`. Omit it on `install`, `approve`, `select` for a picker and on `upgrade` for every
 installed Xcode. `<platform>` is `ios`, `tvos`,
-`watchos` or `visionos`, and `runtimes` means every platform.
+`watchos` or `visionos`; `runtime list`, `installed` and `remove` without one cover every platform.
+`runtimes` works as well as `runtime`.
 
 ## List
 
@@ -95,7 +99,7 @@ Xcode still uses; `--keep-runtimes` keeps them all.
 
 ### JSON
 
-`list`, `installed` (also for runtimes) and `auth status` take `--json`, for scripts and agents:
+`list`, `installed`, `runtime list`, `runtime installed` and `auth status` take `--json`, for scripts and agents:
 
 ```
 $ xcodectl installed --json
@@ -296,7 +300,7 @@ and these runtimes publicly. Older ones, back to iOS 16, tvOS 16, watchOS 9 and 
 with your Apple session, like an Xcode.
 
 ```
-$ xcodectl list runtimes
+$ xcodectl runtime list
 PLATFORM  VERSION    BUILD     SIZE    STATUS
 iOS       27.2 beta  24B5084k  7.6 GB
 iOS       27.1 beta  24A94401  7.3 GB  installed
@@ -306,20 +310,20 @@ watchOS   27.0       24R362    3.6 GB
 visionOS  27.0       24M362    7.0 GB
 ```
 
-`xcodectl list ios` (or `tvos`, `watchos`, `visionos`) narrows it, `--stable` and `--beta` pick one
+`xcodectl runtime list ios` (or `tvos`, `watchos`, `visionos`) narrows it, `--stable` and `--beta` pick one
 kind, `--all` shows every version instead of the newest major of each platform.
 
 Install the runtime matching an Xcode, or an exact one:
 
 ```
-xcodectl install ios              # the one matching the active Xcode
-xcodectl install tvos 26.0
-xcodectl install ios 17           # the newest iOS 17 release: 17.5
-xcodectl install ios --xcode 27.0 # through that Xcode, without selecting it
+xcodectl runtime install ios              # the one matching the active Xcode
+xcodectl runtime install tvos 26.0
+xcodectl runtime install ios 17           # the newest iOS 17 release: 17.5
+xcodectl runtime install ios --xcode 27.0 # through that Xcode, without selecting it
 ```
 
 Xcode 27 no longer downloads runtimes older than iOS 26, tvOS 26, watchOS 26 and visionOS 26. Through
-Xcode 27 or newer, `install` fetches iOS 18, tvOS 18, watchOS 11 and visionOS 2 runtimes, point
+Xcode 27 or newer, `runtime install` fetches iOS 18, tvOS 18, watchOS 11 and visionOS 2 runtimes, point
 releases and betas included, from Apple's public asset server itself and adds them with `simctl`, still
 without a login. That needs free space for about twice the runtime while it installs, and the installed
 runtime keeps taking about that much: CoreSimulator stores both the runtime bundle and the cryptex
@@ -339,7 +343,7 @@ platforms, or `none`.
 
 `xcodectl upgrade --replace-runtimes` then deletes every ready runtime that no installed Xcode uses,
 with the simulators on it, also when there was nothing to upgrade. That includes older OS versions
-kept for testing, such as iOS 18 next to Xcode 27; leftovers that are not ready stay for `prune`. A
+kept for testing, such as iOS 18 next to Xcode 27; leftovers that are not ready stay for `runtime prune`. A
 simulator stays when another build of its OS version is still installed. `--dry-run` lists them:
 
 ```
@@ -348,22 +352,24 @@ PLATFORM  VERSION  BUILD   SIZE    SIMULATORS
 iOS       27.0     24A434  7.5 GB  11
 ```
 
+`xcodectl runtime prune --unused` deletes the same runtimes without upgrading anything.
+
 Runtimes are several gigabytes each, and a deleted one only gives its space back once the last
-registration referencing it is gone. `remove` says which happened:
+registration referencing it is gone. `runtime remove` says which happened:
 
 ```
-$ xcodectl remove tvos 27.0
+$ xcodectl runtime remove tvos 27.0
    ✔︎ Removed tvOS 27.0 (24J360)
 i Info
   Freed 3.4 GB
 ```
 
 An interrupted download leaves a registration that `simctl runtime list` does not print while it
-still holds gigabytes. `xcodectl installed runtimes` shows those, and `prune` clears them:
+still holds gigabytes. `xcodectl runtime installed` shows those, and `runtime prune` clears them:
 
 ```
-xcodectl prune --dry-run   # what would go, and how much it frees
-xcodectl prune
+xcodectl runtime prune --dry-run   # what would go, and how much it frees
+xcodectl runtime prune
 ```
 
 Runtimes back to iOS 16, tvOS 16, watchOS 9 and visionOS 1 are supported. Apple limits iOS 16,
@@ -382,7 +388,7 @@ git clone https://github.com/bonkey/xcodectl && cd xcodectl && just install
 ## Shell completion
 
 Commands, options and their values complete; `upgrade`, `approve`, `select`, `remove` and
-`install --xcode` also offer the installed versions, and `remove` the platforms.
+`runtime install --xcode` also offer the installed versions.
 
 ```
 eval "$(xcodectl --generate-completion-script zsh)"    # ~/.zshrc, after compinit
@@ -446,7 +452,7 @@ takes `true` or `false`, an option a quoted string. Keys before the first table 
 command that has them.
 
 ```toml
-login = false            # never open the sign-in window: install, upgrade, auth status, auth export
+login = false            # never open the sign-in window: install, upgrade, runtime install, auth status, auth export
 
 [install]
 approve = false          # install --no-approve
@@ -461,8 +467,8 @@ plain = true
 ```
 
 A flag typed on the command line wins over its table, which wins over the shared keys. A value
-that does not fit the run is ignored: with `clt = false` under `[install]`, `xcodectl install ios`
-installs the runtime as if the key were not there. `upgrade` reads `[upgrade]` only; the `install`
+that does not fit the run is ignored: with `select = true` under `[install]`, `xcodectl install 27 26`
+installs both as if the key were not there. `upgrade` reads `[upgrade]` only; the `install`
 and `remove` it runs inside do not read the file. A shared `runtimes` key reaches both `install` and
 `upgrade`; `runtimes = "none"` under `[upgrade]` keeps upgrades from installing runtimes.
 An unknown key or table, or a value a flag cannot take, fails every command that reads the file;

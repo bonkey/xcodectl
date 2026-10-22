@@ -86,7 +86,7 @@ struct ConfigTests {
         # xcodectl defaults: one table per command, keys named like its flags without `--`.
         # A flag typed on the command line wins over its [command] table, which wins over the
         # shared keys above the first table. A value that does not fit the run, such as
-        # `clt = false` for `install ios`, is ignored. An unknown key or table fails every command.
+        # `select = true` for `install 27 26`, is ignored. An unknown key or table fails every command.
         # Uncomment a line to set it. A flag shows its default, an option an example;
         # `xcodectl <command> --help` explains them. `xcodectl config check` reads the file back.
 
@@ -97,6 +97,7 @@ struct ConfigTests {
         # json = false
         # login = true
         # runtimes = "all"
+        # stable = false
 
         [auth.status]
         # json = false
@@ -112,7 +113,6 @@ struct ConfigTests {
         [list]
         # stable = false
         # beta = false
-        # all = false
         # json = false
         # order = "by-version"
 
@@ -149,6 +149,21 @@ struct ConfigTests {
         [remove]
         # keep-runtimes = false
 
+        [runtime.list]
+        # stable = false
+        # beta = false
+        # all = false
+        # json = false
+
+        [runtime.installed]
+        # json = false
+
+        [runtime.install]
+        # login = true
+
+        [runtime.prune]
+        # unused = false
+
         """)
     }
 
@@ -169,6 +184,8 @@ struct ConfigTests {
             "list.json = false",
             "installed.json = true",
             "install.clt = false",
+            "runtime.list.json = true",
+            "runtime.installed.json = true",
         ])
     }
 
@@ -207,14 +224,6 @@ struct ConfigTests {
     }
 
     @Test func `values that do not fit the invocation are dropped`() throws {
-        let runtime: Install = try command(
-            ["install", "ios"],
-            "[install]\napprove = false\nselect = true\nclt = false\nruntimes = \"all\"\nlogin = false")
-        #expect(runtime.approve == nil)
-        #expect(runtime.select == nil)
-        #expect(runtime.clt == nil)
-        #expect(runtime.runtimeSelection == nil)
-        #expect(runtime.autologin == false)
         #expect(try command(["install", "27", "26"], "[install]\nselect = true", as: Install.self).select == nil)
         #expect(try command(["install", "27", "--runtimes", "all"], "[install]\napprove = false", as: Install.self)
             .approve == nil)
@@ -222,14 +231,7 @@ struct ConfigTests {
         let conflicting: Install = try command(["install", "27"], "[install]\napprove = false\nruntimes = \"ios\"")
         #expect(conflicting.approve == false)
         #expect(conflicting.runtimeSelection == nil)
-        let list: List = try command(["list", "ios"], "[list]\nall = true\norder = \"by-date\"")
-        #expect(list.all == true)
-        #expect(list.order == nil)
-        let xcodes: List = try command(["list", "27"], "[list]\nall = true\norder = \"by-date\"")
-        #expect(xcodes.all == nil)
-        #expect(xcodes.order == .byDate)
         #expect(try command(["list", "--beta"], "[list]\nstable = true", as: List.self).stable == nil)
-        #expect(try command(["installed", "ios"], "[installed]\nsize = false", as: ListInstalled.self).size == nil)
         #expect(try command(
             ["release-notes", "27"],
             "[release-notes]\nprovider = \"openai\"",
@@ -240,7 +242,14 @@ struct ConfigTests {
             "[release-notes]\nplain = true",
             as: ReleaseNotesCommand.self)
             .plain == nil)
-        #expect(try command(["remove", "ios"], "[remove]\nkeep-runtimes = true", as: Remove.self).keepRuntimes == nil)
+    }
+
+    @Test func `runtime commands read their own tables and the shared keys`() throws {
+        let toml = "login = false\n[install]\nlogin = true\n[runtime.list]\nall = true\n[runtime.prune]\nunused = true"
+        #expect(try command(["runtime", "install", "ios"], toml, as: RuntimeCommand.Install.self).autologin == false)
+        #expect(try command(["runtime", "list"], toml, as: RuntimeCommand.List.self).all == true)
+        #expect(try command(["runtime", "prune"], toml, as: RuntimeCommand.Prune.self).unused == true)
+        #expect(try parse("[list]\nall = true").problems() == ["[list] all: unknown key"])
     }
 
     @Test func `upgrade reads its own table, not install's`() throws {
