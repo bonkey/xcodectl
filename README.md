@@ -48,6 +48,7 @@ xcodectl auth export [--no-login] [--copy] | import [--paste]
                                    move the session to a runner; both check it with Apple first;
                                    --copy / --paste use the clipboard
 xcodectl auth logout               delete the session from this Mac's Keychain
+xcodectl reference                 the help of every command and subcommand in one go, for agents
 ```
 
 Every flag the config file can set has an inverse (`--approve`/`--no-approve`, `--size`/`--no-size`,

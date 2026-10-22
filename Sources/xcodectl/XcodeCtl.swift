@@ -12,6 +12,7 @@ struct XcodeCtl: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "xcodectl",
         abstract: "Install, approve, switch and remove Xcode versions and their simulator runtimes.",
+        discussion: "If you are an agent, run `xcodectl reference` for the help of every command.",
         version: version,
         subcommands: [
             AuthCommand.self,
@@ -26,6 +27,7 @@ struct XcodeCtl: AsyncParsableCommand {
             Remove.self,
             RuntimeCommand.self,
             ConfigCommand.self,
+            Reference.self,
         ])
 }
 
@@ -1832,4 +1834,38 @@ struct RuntimeCommand: AsyncParsableCommand {
         abstract: "List, install, remove and prune simulator runtimes.",
         subcommands: [List.self, ListInstalled.self, Install.self, Remove.self, Prune.self],
         aliases: ["runtimes"])
+}
+
+// MARK: - Reference
+
+struct Reference: ParsableCommand {
+    static let configuration = CommandConfiguration(
+        abstract: "Print the help of every command and subcommand.")
+
+    /// Every command `--help` shows, the root first, each headed by the words that invoke it.
+    static func text() -> String {
+        commands(XcodeCtl.self, path: [])
+            .map { command in
+                let help = XcodeCtl.helpMessage(for: command.command).trimmingCharacters(in: .whitespacesAndNewlines)
+                return "# \(command.invocation)\n\n\(help)"
+            }
+            .joined(separator: "\n\n")
+    }
+
+    func run() {
+        print(Self.text())
+    }
+
+    private static func commands(
+        _ command: ParsableCommand.Type,
+        path: [String])
+        -> [(invocation: String, command: ParsableCommand.Type)]
+    {
+        guard command.configuration.shouldDisplay else {
+            return []
+        }
+        let words = path + [command._commandName]
+        return [(words.joined(separator: " "), command)]
+            + command.configuration.subcommands.flatMap { commands($0, path: words) }
+    }
 }
