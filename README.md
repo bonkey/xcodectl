@@ -434,10 +434,28 @@ xcodectl install 26.6 --select
 
 Alternatively pass the blob per job as `XCODECTL_SESSION`; it is then used in memory only.
 
-Over plain ssh the login Keychain is locked (macOS gives ssh logins their own security session),
-so `auth import` and `install` fail with "User interaction is not allowed". Run
-`security unlock-keychain` in that ssh session first, do the import from a GUI session (Screen
-Sharing), or use `XCODECTL_SESSION`. Runners launched in the logged-in session are not affected.
+Over ssh the login Keychain is locked: macOS gives each ssh connection its own security session,
+so `auth import` and `install` fail with "User interaction is not allowed" until
+`security unlock-keychain` runs in the same connection. Let ssh share one connection per host, in
+`~/.ssh/config` on your Mac:
+
+```
+Host runner
+    ControlMaster auto
+    ControlPath ~/.ssh/cm-%C
+    ControlPersist 10m
+```
+
+Then one unlock serves the import and the commands after it while the connection lasts:
+
+```
+ssh -t runner security unlock-keychain    # asks for the runner's login password
+xcodectl auth export | ssh runner xcodectl auth import
+```
+
+A pipe on stdin wins over `paste = true` in the runner's config file. Without a shared connection,
+import from a GUI session (Screen Sharing), or pass `XCODECTL_SESSION` per job instead. Runners
+launched in the logged-in session are not affected.
 Apple's login session lasts from a day to a few weeks, depending on the region;
 `xcodectl auth status` asks Apple whether it still holds and exits 1 when not (`--json` adds
 `signedIn` and the reason on stdout). When it has expired,

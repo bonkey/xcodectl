@@ -296,10 +296,25 @@ struct AuthCommand: AsyncParsableCommand {
 
     struct Import: AsyncParsableCommand {
         static let configuration = CommandConfiguration(
-            abstract: "Check a base64 session from stdin (or the clipboard with --paste) with Apple and store it in the Keychain.")
+            abstract: "Check a base64 session from stdin (or the clipboard with --paste) with Apple and store it in the Keychain.",
+            discussion: """
+            Over ssh the login Keychain is locked: macOS gives each ssh connection its own security session. \
+            With `ControlMaster auto`, `ControlPath ~/.ssh/cm-%C` and `ControlPersist 10m` for the host in \
+            ~/.ssh/config, the commands share one connection, so one unlock serves the import:
 
-        @Flag(inversion: .prefixedNo, help: "Read the session from the clipboard instead of stdin.")
+              ssh -t runner security unlock-keychain
+              xcodectl auth export | ssh runner xcodectl auth import
+            """)
+
+        @Flag(
+            inversion: .prefixedNo,
+            help: "Read the session from the clipboard when stdin is a terminal; a pipe wins.")
         var paste: Bool?
+
+        /// A pipe on stdin holds the blob, so `paste = true` in the config file does not shadow it.
+        static func readsClipboard(paste: Bool?, stdinIsTerminal: Bool) -> Bool {
+            paste == true && stdinIsTerminal
+        }
 
         static func store(_ blob: String) async throws {
             let cookies = try Session.decode(blob)
@@ -319,7 +334,7 @@ struct AuthCommand: AsyncParsableCommand {
 
         func run() async throws {
             let blob: String
-            if paste == true {
+            if Self.readsClipboard(paste: paste, stdinIsTerminal: isatty(STDIN_FILENO) == 1) {
                 guard let text = await Clipboard.paste(),
                       !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 else {

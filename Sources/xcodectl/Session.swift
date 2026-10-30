@@ -252,7 +252,7 @@ enum Keychain {
             return nil
         }
         guard status == errSecSuccess else {
-            throw Fail("keychain read failed: \(message(status))\(hint(status))")
+            throw Fail("keychain read failed: \(message(status))\(hint(status, read: true))")
         }
         return item as? Data
     }
@@ -278,20 +278,22 @@ enum Keychain {
         }
     }
 
+    /// Over ssh the login keychain is locked; say so instead of leaving the raw OSStatus. `XCODECTL_SESSION` stands in
+    /// for a read only.
+    static func hint(_ status: OSStatus, read: Bool = false) -> String {
+        guard status == errSecInteractionNotAllowed else {
+            return ""
+        }
+        let otherwise = read ? ", or pass the session via \(Session.envKey)" : "; `xcodectl auth import --help` shows how"
+        return " (login keychain is locked, typical over ssh: run `security unlock-keychain` in the same ssh connection first\(otherwise))"
+    }
+
     private static var base: [String: Any] {
         [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: account,
         ]
-    }
-
-    /// Over ssh the login keychain is locked; say so instead of leaving the raw OSStatus.
-    private static func hint(_ status: OSStatus) -> String {
-        guard status == errSecInteractionNotAllowed else {
-            return ""
-        }
-        return " (login keychain is locked, typical over ssh: run `security unlock-keychain` first, or pass the session via \(Session.envKey))"
     }
 
     private static func message(_ status: OSStatus) -> String {

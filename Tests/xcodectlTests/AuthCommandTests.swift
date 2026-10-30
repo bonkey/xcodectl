@@ -29,6 +29,23 @@ struct AuthCommandTests {
         #expect(plainImport.paste != true)
     }
 
+    /// `auth export | ssh runner xcodectl auth import` works with `paste = true` in the runner's config file.
+    @Test func `import reads a pipe even with paste on`() {
+        #expect(!AuthCommand.Import.readsClipboard(paste: true, stdinIsTerminal: false))
+        #expect(AuthCommand.Import.readsClipboard(paste: true, stdinIsTerminal: true))
+        #expect(!AuthCommand.Import.readsClipboard(paste: nil, stdinIsTerminal: true))
+        #expect(!AuthCommand.Import.readsClipboard(paste: false, stdinIsTerminal: true))
+    }
+
+    /// XCODECTL_SESSION replaces a Keychain read, never the write `auth import` exists for.
+    @Test func `locked keychain hint fits the access`() {
+        let read = Keychain.hint(errSecInteractionNotAllowed, read: true)
+        #expect(read.contains("same ssh connection") && read.contains(Session.envKey), "\(read)")
+        let write = Keychain.hint(errSecInteractionNotAllowed)
+        #expect(write.contains("auth import --help") && !write.contains(Session.envKey), "\(write)")
+        #expect(Keychain.hint(errSecItemNotFound).isEmpty)
+    }
+
     /// A session without Apple's login cookie fails before any request goes out.
     @Test func `status with JSON exits one without an error`() async throws {
         try await withSession("[]") {
