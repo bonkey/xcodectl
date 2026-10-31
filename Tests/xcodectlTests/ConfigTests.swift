@@ -109,6 +109,7 @@ struct ConfigTests {
 
         [auth.import]
         # paste = false
+        # unlock-keychain = true
 
         [list]
         # stable = false

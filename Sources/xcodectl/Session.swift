@@ -95,8 +95,8 @@ enum Session {
         cookies.filter { !$0.isExpired && $0.name != loginCookie && $0.name != ticketCookie }
     }
 
-    static func save(_ cookies: [Cookie]) throws {
-        try Keychain.write(JSONEncoder().encode(cookies))
+    static func save(_ cookies: [Cookie], unlock: Bool = false) throws {
+        try Keychain.write(JSONEncoder().encode(cookies), unlock: unlock)
     }
 
     static func encode(_ cookies: [Cookie]) throws -> String {
@@ -242,6 +242,13 @@ enum Keychain {
     static let service = "xcodectl"
     static let account = "apple-session"
 
+    /// True when macOS opened this process's security session for a network login, such as ssh.
+    static var sessionIsRemote: Bool {
+        var attributes = SessionAttributeBits()
+        return SessionGetInfo(callerSecuritySession, nil, &attributes) == errSecSuccess
+            && attributes.contains(.sessionIsRemote)
+    }
+
     static func read() throws -> Data? {
         var query = base
         query[kSecReturnData as String] = true
@@ -257,14 +264,11 @@ enum Keychain {
         return item as? Data
     }
 
-    static func write(_ data: Data) throws {
-        let update = [kSecValueData as String: data]
-        var status = SecItemUpdate(base as CFDictionary, update as CFDictionary)
-        if status == errSecItemNotFound {
-            var add = base
-            add[kSecValueData as String] = data
-            add[kSecAttrLabel as String] = "xcodectl Apple Developer session"
-            status = SecItemAdd(add as CFDictionary, nil)
+    /// With `unlock`, a write that finds the login keychain locked unlocks it and tries once more.
+    static func write(_ data: Data, unlock: Bool = false) throws {
+        var status = store(data)
+        if status == errSecInteractionNotAllowed, unlock, unlockDefault() {
+            status = store(data)
         }
         guard status == errSecSuccess else {
             throw Fail("keychain write failed: \(message(status))\(hint(status))")
@@ -298,5 +302,29 @@ enum Keychain {
 
     private static func message(_ status: OSStatus) -> String {
         (SecCopyErrorMessageString(status, nil) as String?) ?? "OSStatus \(status)"
+    }
+
+    private static func store(_ data: Data) -> OSStatus {
+        let update = [kSecValueData as String: data]
+        var status = SecItemUpdate(base as CFDictionary, update as CFDictionary)
+        if status == errSecItemNotFound {
+            var add = base
+            add[kSecValueData as String] = data
+            add[kSecAttrLabel as String] = "xcodectl Apple Developer session"
+            status = SecItemAdd(add as CFDictionary, nil)
+        }
+        return status
+    }
+
+    /// Unlocks the default keychain for this security session. While its owner is logged in at the console, an ssh
+    /// session finds the login keychain locked and its unlock does not check the password, so an empty one serves.
+    /// `SecKeychainUnlock` is exported by Security but missing from the SDK headers.
+    private static func unlockDefault() -> Bool {
+        typealias Unlock = @convention(c) (OpaquePointer?, UInt32, UnsafeRawPointer?, DarwinBoolean) -> OSStatus
+        let rtldDefault = UnsafeMutableRawPointer(bitPattern: -2) // RTLD_DEFAULT, a C macro Swift does not import
+        guard let symbol = dlsym(rtldDefault, "SecKeychainUnlock") else {
+            return false
+        }
+        return unsafeBitCast(symbol, to: Unlock.self)(nil, 0, "", true) == errSecSuccess
     }
 }

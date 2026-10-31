@@ -37,6 +37,19 @@ struct AuthCommandTests {
         #expect(!AuthCommand.Import.readsClipboard(paste: false, stdinIsTerminal: true))
     }
 
+    /// `auth export | ssh runner xcodectl auth import` works without `security unlock-keychain` first.
+    @Test func `import unlocks the keychain over ssh only`() throws {
+        #expect(AuthCommand.Import.unlocksKeychain(unlockKeychain: nil, remote: true))
+        #expect(AuthCommand.Import.unlocksKeychain(unlockKeychain: true, remote: true))
+        #expect(!AuthCommand.Import.unlocksKeychain(unlockKeychain: false, remote: true))
+        #expect(!AuthCommand.Import.unlocksKeychain(unlockKeychain: nil, remote: false))
+        #expect(!AuthCommand.Import.unlocksKeychain(unlockKeychain: true, remote: false))
+        let off = try #require(
+            XcodeCtl.parseAsRoot(["auth", "import", "--no-unlock-keychain"]) as? AuthCommand.Import)
+        #expect(off.unlockKeychain == false)
+        #expect(try #require(XcodeCtl.parseAsRoot(["auth", "import"]) as? AuthCommand.Import).unlockKeychain == nil)
+    }
+
     /// XCODECTL_SESSION replaces a Keychain read, never the write `auth import` exists for.
     @Test func `locked keychain hint fits the access`() {
         let read = Keychain.hint(errSecInteractionNotAllowed, read: true)

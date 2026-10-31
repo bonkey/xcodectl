@@ -410,6 +410,7 @@ extension AuthCommand.Import: Configurable {
     static let configTable = "auth.import"
     static let settings: [ConfigSetting<AuthCommand.Import>] = [
         .flag("paste", \.paste, default: false),
+        .flag("unlock-keychain", \.unlockKeychain, default: true),
     ]
 }
 

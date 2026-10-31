@@ -299,8 +299,13 @@ struct AuthCommand: AsyncParsableCommand {
             abstract: "Check a base64 session from stdin (or the clipboard with --paste) with Apple and store it in the Keychain.",
             discussion: """
             Over ssh the login Keychain is locked: macOS gives each ssh connection its own security session. \
-            With `ControlMaster auto`, `ControlPath ~/.ssh/cm-%C` and `ControlPersist 10m` for the host in \
-            ~/.ssh/config, the commands share one connection, so one unlock serves the import:
+            Import unlocks it for its own connection, which works while you are logged in at the runner's console:
+
+              xcodectl auth export | ssh runner xcodectl auth import
+
+            When that unlock fails, unlock it yourself in the same connection. With `ControlMaster auto`, \
+            `ControlPath ~/.ssh/cm-%C` and `ControlPersist 10m` for the host in ~/.ssh/config, the commands \
+            share one connection, so one unlock serves the import:
 
               ssh -t runner security unlock-keychain
               xcodectl auth export | ssh runner xcodectl auth import
@@ -311,12 +316,22 @@ struct AuthCommand: AsyncParsableCommand {
             help: "Read the session from the clipboard when stdin is a terminal; a pipe wins.")
         var paste: Bool?
 
+        @Flag(
+            inversion: .prefixedNo,
+            help: "Over ssh, unlock the login Keychain when it is locked.")
+        var unlockKeychain: Bool?
+
         /// A pipe on stdin holds the blob, so `paste = true` in the config file does not shadow it.
         static func readsClipboard(paste: Bool?, stdinIsTerminal: Bool) -> Bool {
             paste == true && stdinIsTerminal
         }
 
-        static func store(_ blob: String) async throws {
+        /// Only a remote session needs it: a local one gets macOS's own password prompt.
+        static func unlocksKeychain(unlockKeychain: Bool?, remote: Bool) -> Bool {
+            unlockKeychain != false && remote
+        }
+
+        static func store(_ blob: String, unlock: Bool = false) async throws {
             let cookies = try Session.decode(blob)
             guard cookies.contains(where: { $0.name == Session.loginCookie })
             else {
@@ -329,7 +344,7 @@ struct AuthCommand: AsyncParsableCommand {
                 throw Fail(
                     "Apple no longer accepts this session: run `xcodectl auth login` and `auth export` again on your Mac")
             }
-            try Session.save(verified)
+            try Session.save(verified, unlock: unlock)
         }
 
         func run() async throws {
@@ -344,7 +359,9 @@ struct AuthCommand: AsyncParsableCommand {
             } else {
                 blob = String(decoding: FileHandle.standardInput.readDataToEndOfFile(), as: UTF8.self)
             }
-            try await Self.store(blob)
+            try await Self.store(
+                blob,
+                unlock: Self.unlocksKeychain(unlockKeychain: unlockKeychain, remote: Keychain.sessionIsRemote))
             ui.success("Session stored in the Keychain.")
         }
     }

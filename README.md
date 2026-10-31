@@ -44,7 +44,7 @@ xcodectl runtime prune [--unused] [--dry-run]
                                    leftover runtime registrations that still hold disk space;
                                    --unused: also every runtime no installed Xcode uses
 xcodectl config init | check       defaults for any flag in ~/.config/xcodectl/config.toml
-xcodectl auth export [--no-login] [--copy] | import [--paste]
+xcodectl auth export [--no-login] [--copy] | import [--paste] [--no-unlock-keychain]
                                    move the session to a runner; both check it with Apple first;
                                    --copy / --paste use the clipboard
 xcodectl auth logout               delete the session from this Mac's Keychain
@@ -434,10 +434,18 @@ xcodectl install 26.6 --select
 
 Alternatively pass the blob per job as `XCODECTL_SESSION`; it is then used in memory only.
 
-Over ssh the login Keychain is locked: macOS gives each ssh connection its own security session,
-so `auth import` and `install` fail with "User interaction is not allowed" until
-`security unlock-keychain` runs in the same connection. Let ssh share one connection per host, in
-`~/.ssh/config` on your Mac:
+Over ssh the login Keychain is locked: macOS gives each ssh connection its own security session.
+`auth import` unlocks it for its own connection (`--no-unlock-keychain` or `unlock-keychain = false`
+turns that off), which works while you are logged in at the runner's console:
+
+```
+xcodectl auth export | ssh runner xcodectl auth import
+```
+
+When that unlock fails, and for `install` and the other commands that read the session,
+`security unlock-keychain` has to run in the same connection first; without it they fail with
+"User interaction is not allowed". Let ssh share one connection per host, in `~/.ssh/config` on
+your Mac:
 
 ```
 Host runner
