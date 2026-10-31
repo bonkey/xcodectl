@@ -59,6 +59,42 @@ struct AuthCommandTests {
         #expect(Keychain.hint(errSecItemNotFound).isEmpty)
     }
 
+    /// After its own unlock a refusal is another version's session, not the lock.
+    @Test func `keychain hint names another version's session`() {
+        let read = Keychain.hint(errSecInteractionNotAllowed, read: true, unlocked: true)
+        #expect(read.contains("another xcodectl version") && read.contains("import it again"), "\(read)")
+        #expect(!read.contains("unlock-keychain"), "\(read)")
+        let owner = Keychain.hint(errSecInvalidOwnerEdit)
+        #expect(owner.contains("another xcodectl version") && owner.contains("console"), "\(owner)")
+    }
+
+    /// Over ssh, `install` and the other commands that use the stored session work without `security unlock-keychain`.
+    @Test func `keychain tries once more after its own unlock`() {
+        func run(_ first: OSStatus, unlock: Bool = true, unlocks: Bool = true) -> [String] {
+            var calls = 0
+            var unlockCalls = 0
+            let unlockKeychain = {
+                unlockCalls += 1
+                return unlocks
+            }
+            let result = Keychain.unlocking(unlock, with: unlockKeychain) {
+                calls += 1
+                return calls == 1 ? first : errSecSuccess
+            }
+            return ["\(result.status)", "\(result.unlocked)", "\(calls)", "\(unlockCalls)"]
+        }
+        let (success, locked, owner) = (
+            "\(errSecSuccess)",
+            "\(errSecInteractionNotAllowed)",
+            "\(errSecInvalidOwnerEdit)")
+        #expect(run(errSecInteractionNotAllowed) == [success, "true", "2", "1"])
+        #expect(run(errSecInvalidOwnerEdit) == [success, "true", "2", "1"])
+        #expect(run(errSecInteractionNotAllowed, unlock: false) == [locked, "false", "1", "0"])
+        #expect(run(errSecInvalidOwnerEdit, unlocks: false) == [owner, "false", "1", "1"])
+        #expect(run(errSecItemNotFound) == ["\(errSecItemNotFound)", "false", "1", "0"])
+        #expect(run(errSecSuccess) == [success, "false", "1", "0"])
+    }
+
     /// A session without Apple's login cookie fails before any request goes out.
     @Test func `status with JSON exits one without an error`() async throws {
         try await withSession("[]") {

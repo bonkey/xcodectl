@@ -190,14 +190,19 @@ exported blob per job as `XCODECTL_SESSION`; it stays in memory.
 Apple's session lasts from a day to a few weeks. `xcodectl auth status` exits 1 when it has expired,
 and `xcodectl auth export` signs you in again.
 
+Import again after upgrading xcodectl on the runner: over ssh only the xcodectl that imported the
+session reads it, because macOS asks again for each new version and ssh has no screen to ask on.
+
 <details>
 <summary>The login Keychain over ssh</summary>
 
 Over ssh the login Keychain is locked, because macOS gives each ssh connection its own security
-session. `auth import` unlocks it for its own connection while you are logged in at the runner's
-console. Other commands that read the session, such as `install`, need `security unlock-keychain`
-in the same connection first, or they fail with "User interaction is not allowed". Let ssh share
-one connection per host, in `~/.ssh/config` on your Mac:
+session. `auth import`, `install` and the other commands that use the session unlock it for their
+own connection while you are logged in at the runner's console. The import also replaces the
+stored session, so the xcodectl that imported it reads it without a prompt. When that unlock fails,
+`security unlock-keychain` has to run in the same connection first, or the commands fail with
+"User interaction is not allowed". Let ssh share one connection per host, in `~/.ssh/config` on
+your Mac:
 
 ```
 Host runner

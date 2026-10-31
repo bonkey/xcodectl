@@ -303,6 +303,9 @@ struct AuthCommand: AsyncParsableCommand {
 
               xcodectl auth export | ssh runner xcodectl auth import
 
+            The session goes into a new item that only the xcodectl that imported it reads without a prompt, \
+            so import again after upgrading xcodectl on the runner.
+
             When that unlock fails, unlock it yourself in the same connection. With `ControlMaster auto`, \
             `ControlPath ~/.ssh/cm-%C` and `ControlPersist 10m` for the host in ~/.ssh/config, the commands \
             share one connection, so one unlock serves the import:
@@ -318,7 +321,7 @@ struct AuthCommand: AsyncParsableCommand {
 
         @Flag(
             inversion: .prefixedNo,
-            help: "Over ssh, unlock the login Keychain when it is locked.")
+            help: "Over ssh, unlock the login Keychain and store the session as a new item this xcodectl can read.")
         var unlockKeychain: Bool?
 
         /// A pipe on stdin holds the blob, so `paste = true` in the config file does not shadow it.
@@ -344,7 +347,8 @@ struct AuthCommand: AsyncParsableCommand {
                 throw Fail(
                     "Apple no longer accepts this session: run `xcodectl auth login` and `auth export` again on your Mac")
             }
-            try Session.save(verified, unlock: unlock)
+            // Over ssh no prompt can let a new xcodectl read the old item; a new item lets the one that added it.
+            try Session.save(verified, unlock: unlock, replace: unlock)
         }
 
         func run() async throws {

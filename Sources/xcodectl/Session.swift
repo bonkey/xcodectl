@@ -95,8 +95,8 @@ enum Session {
         cookies.filter { !$0.isExpired && $0.name != loginCookie && $0.name != ticketCookie }
     }
 
-    static func save(_ cookies: [Cookie], unlock: Bool = false) throws {
-        try Keychain.write(JSONEncoder().encode(cookies), unlock: unlock)
+    static func save(_ cookies: [Cookie], unlock: Bool = false, replace: Bool = false) throws {
+        try Keychain.write(JSONEncoder().encode(cookies), unlock: unlock, replace: replace)
     }
 
     static func encode(_ cookies: [Cookie]) throws -> String {
@@ -254,42 +254,69 @@ enum Keychain {
         query[kSecReturnData as String] = true
         query[kSecMatchLimit as String] = kSecMatchLimitOne
         var item: CFTypeRef?
-        let status = SecItemCopyMatching(query as CFDictionary, &item)
+        let (status, unlocked) = unlocking(sessionIsRemote) { SecItemCopyMatching(query as CFDictionary, &item) }
         if status == errSecItemNotFound {
             return nil
         }
         guard status == errSecSuccess else {
-            throw Fail("keychain read failed: \(message(status))\(hint(status, read: true))")
+            throw Fail("keychain read failed: \(message(status))\(hint(status, read: true, unlocked: unlocked))")
         }
         return item as? Data
     }
 
-    /// With `unlock`, a write that finds the login keychain locked unlocks it and tries once more.
-    static func write(_ data: Data, unlock: Bool = false) throws {
-        var status = store(data)
-        if status == errSecInteractionNotAllowed, unlock, unlockDefault() {
-            status = store(data)
-        }
+    /// With `unlock`, a refusal gets one more try after this process unlocks the keychain. With `replace`, the write
+    /// deletes the item and adds a new one: macOS lets the program that added an item read it without a prompt, and an
+    /// update keeps the programs the old item allowed.
+    static func write(_ data: Data, unlock: Bool = false, replace: Bool = false) throws {
+        let (status, unlocked) = unlocking(unlock) { store(data, replace: replace) }
         guard status == errSecSuccess else {
-            throw Fail("keychain write failed: \(message(status))\(hint(status))")
+            throw Fail("keychain write failed: \(message(status))\(hint(status, unlocked: unlocked))")
         }
     }
 
     static func delete() throws {
-        let status = SecItemDelete(base as CFDictionary)
+        let (status, unlocked) = unlocking(sessionIsRemote) { SecItemDelete(base as CFDictionary) }
         guard status == errSecSuccess || status == errSecItemNotFound else {
-            throw Fail("keychain delete failed: \(message(status))\(hint(status))")
+            throw Fail("keychain delete failed: \(message(status))\(hint(status, unlocked: unlocked))")
         }
     }
 
-    /// Over ssh the login keychain is locked; say so instead of leaving the raw OSStatus. `XCODECTL_SESSION` stands in
-    /// for a read only.
-    static func hint(_ status: OSStatus, read: Bool = false) -> String {
-        guard status == errSecInteractionNotAllowed else {
+    /// With `unlock`, an `operation` that finds the login keychain locked, or the item owned by another program, runs
+    /// once more after this process unlocks the keychain: an unlock from this process is what lets it delete another
+    /// program's item without a prompt. `unlocked` tells whether that unlock ran.
+    static func unlocking(
+        _ unlock: Bool,
+        with unlockKeychain: () -> Bool = unlockDefault,
+        _ operation: () -> OSStatus)
+        -> (status: OSStatus, unlocked: Bool)
+    {
+        let status = operation()
+        guard status == errSecInteractionNotAllowed || status == errSecInvalidOwnerEdit, unlock, unlockKeychain() else {
+            return (status, false)
+        }
+        return (operation(), true)
+    }
+
+    /// Says why the keychain refused instead of leaving the raw OSStatus; `unlocked` when this process unlocked the
+    /// keychain before the last try. `XCODECTL_SESSION` stands in for a read only.
+    static func hint(_ status: OSStatus, read: Bool = false, unlocked: Bool = false) -> String {
+        switch status {
+        case errSecInteractionNotAllowed where read && unlocked:
+            return " (another xcodectl version stored the session, and ssh has no screen to ask whether this one may"
+                + " read it: import it again with this one; `xcodectl auth import --help` shows how)"
+
+        case errSecInteractionNotAllowed:
+            let otherwise = read ? ", or pass the session via \(Session.envKey)" : "; `xcodectl auth import --help` shows how"
+            return " (login keychain is locked, typical over ssh: run `security unlock-keychain` in the same ssh connection first\(otherwise))"
+
+        case errSecInvalidOwnerEdit:
+            return " (another xcodectl version stored the session, and over ssh this one may change it only after"
+                + " unlocking the keychain itself, which works while you are logged in at this Mac's console:"
+                + " log in there and run it again)"
+
+        default:
             return ""
         }
-        let otherwise = read ? ", or pass the session via \(Session.envKey)" : "; `xcodectl auth import --help` shows how"
-        return " (login keychain is locked, typical over ssh: run `security unlock-keychain` in the same ssh connection first\(otherwise))"
     }
 
     private static var base: [String: Any] {
@@ -304,16 +331,20 @@ enum Keychain {
         (SecCopyErrorMessageString(status, nil) as String?) ?? "OSStatus \(status)"
     }
 
-    private static func store(_ data: Data) -> OSStatus {
-        let update = [kSecValueData as String: data]
-        var status = SecItemUpdate(base as CFDictionary, update as CFDictionary)
-        if status == errSecItemNotFound {
-            var add = base
-            add[kSecValueData as String] = data
-            add[kSecAttrLabel as String] = "xcodectl Apple Developer session"
-            status = SecItemAdd(add as CFDictionary, nil)
+    private static func store(_ data: Data, replace: Bool) -> OSStatus {
+        let status: OSStatus =
+            if replace {
+                SecItemDelete(base as CFDictionary)
+            } else {
+                SecItemUpdate(base as CFDictionary, [kSecValueData as String: data] as CFDictionary)
+            }
+        guard status == errSecItemNotFound || replace && status == errSecSuccess else {
+            return status
         }
-        return status
+        var add = base
+        add[kSecValueData as String] = data
+        add[kSecAttrLabel as String] = "xcodectl Apple Developer session"
+        return SecItemAdd(add as CFDictionary, nil)
     }
 
     /// Unlocks the default keychain for this security session. While its owner is logged in at the console, an ssh
