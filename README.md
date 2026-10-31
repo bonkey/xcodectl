@@ -4,14 +4,7 @@ Install, upgrade and switch Xcode versions and their simulator runtimes from the
 Mac and on self-hosted CI Macs. Sign in once on Apple's own page; xcodectl keeps the session in
 your Keychain and does the rest.
 
-![xcodectl install --runtimes ios 26.1 26.2, then remove 26.1 and remove 26.2, in a terminal](docs/install-remove.png)
-
-<details>
-<summary>The same run as a video: 6¾ minutes in 38 seconds</summary>
-
 https://github.com/user-attachments/assets/4e4bc6c3-dc0c-403a-97bc-20a632e8d828
-
-</details>
 
 ## ✨ Features
 
