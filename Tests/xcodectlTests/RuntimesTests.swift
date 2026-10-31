@@ -446,6 +446,53 @@ struct SimCtlDeleteTests {
             "Error Domain=SimDiskImageErrorDomain Code=9 \"Duplicate of image at /Library/...\""))
         #expect(!SimCtl.isRemovedWithoutReclaimedAsset("Error Domain=NSPOSIXErrorDomain Code=22"))
     }
+
+    /// `scan-and-mount` registers the kept asset again under a new identifier.
+    @Test func `reregistration is the ready registration of the same build and asset`() throws {
+        let again = try SimCtl.reregistration(of: deleted(), in: SimCtl.parse(makeSimctlOutput([
+            ("27.2", "com.apple.platform.iphonesimulator", "27.2", "24B8117", "Ready", 1, assetPath("other")),
+            ("6247884B", "com.apple.platform.iphonesimulator", "26.1", "23B86", "Ready", 1, assetPath("c3c3")),
+        ])))
+        #expect(again?.identifier == "6247884B")
+    }
+
+    /// CoreSimulator verifies the asset before the registration can be deleted.
+    @Test func `reregistration waits for the registration to be ready`() throws {
+        #expect(try SimCtl.reregistration(of: deleted(), in: SimCtl.parse(makeSimctlOutput([
+            ("6247884B", "com.apple.platform.iphonesimulator", "26.1", "23B86", "Verifying", 1, assetPath("c3c3")),
+        ]))) == nil)
+    }
+
+    @Test func `reregistration ignores the same build on another asset`() throws {
+        #expect(try SimCtl.reregistration(of: deleted(), in: SimCtl.parse(makeSimctlOutput([
+            ("6247884B", "com.apple.platform.iphonesimulator", "26.1", "23B86", "Ready", 1, assetPath("other")),
+        ]))) == nil)
+    }
+
+    @Test func `reregistration ignores another build on the same asset`() throws {
+        #expect(try SimCtl.reregistration(of: deleted(), in: SimCtl.parse(makeSimctlOutput([
+            ("6247884B", "com.apple.platform.iphonesimulator", "26.1", "23B85", "Ready", 1, assetPath("c3c3")),
+        ]))) == nil)
+    }
+
+    /// A disk image runtime has no asset to register again.
+    @Test func `reregistration is nil without an asset`() throws {
+        let image = "/Library/Developer/CoreSimulator/Images/abc.dmg"
+        let runtimes = try SimCtl.parse(makeSimctlOutput([
+            ("EB966D3A", "com.apple.platform.iphonesimulator", "26.1", "23B86", "Ready", 1, image),
+        ]))
+        #expect(SimCtl.reregistration(of: runtimes[0], in: runtimes) == nil)
+    }
+
+    private func assetPath(_ sha: String) -> String {
+        "/System/Library/AssetsV2/com_apple_MobileAsset_iOSSimulatorRuntime/\(sha).asset/AssetData"
+    }
+
+    private func deleted() throws -> InstalledRuntime {
+        try #require(SimCtl.parse(makeSimctlOutput([
+            ("EB966D3A", "com.apple.platform.iphonesimulator", "26.1", "23B86", "Ready", 1, assetPath("c3c3")),
+        ])).first)
+    }
 }
 
 // MARK: - SimulatorDeviceTests

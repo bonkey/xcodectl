@@ -518,34 +518,38 @@ enum SimCtl {
     /// SimDiskImageError 30 means the registration is gone and only the asset purge is in doubt.
     /// simdiskimaged looks for the payload before mobileassetd has finished removing it, and can
     /// misread a removed one, so the asset directory is checked here instead: a purge still in flight
-    /// gets a short wait, and only an asset that stays is a failure.
+    /// gets a short wait.
+    ///
+    /// An asset that stays is one simdiskimaged could not unmount. Its own recovery follows:
+    /// `scan-and-mount` registers the asset again under a new identifier, and deleting that
+    /// registration purges it. Only an asset that survives this one retry is a failure.
     static func delete(_ runtime: InstalledRuntime, timeout: TimeInterval = 300) throws {
-        var assetInDoubt = false
-        do {
-            try run(executable, ["runtime", "delete", runtime.identifier])
-        } catch let error as Fail where isRemovedWithoutReclaimedAsset(error.description) {
-            assetInDoubt = true
-        }
-        let deadline = Date().addingTimeInterval(timeout)
-        while let pending = try? runtimes().first(where: { $0.identifier == runtime.identifier }),
-              pending.state == "Deleting"
-        {
-            guard Date() < deadline else {
-                throw Fail("`simctl runtime delete \(runtime.identifier)` is still running after \(Int(timeout))s")
-            }
-            Thread.sleep(forTimeInterval: 0.5)
-        }
-        guard assetInDoubt, let asset = runtime.assetDirectory else {
+        let assetInDoubt = try deleteRegistration(runtime.identifier, timeout: timeout)
+        guard assetInDoubt, let asset = runtime.assetDirectory, !isPurged(asset) else {
             return
         }
-        let assetDeadline = Date().addingTimeInterval(30)
-        while FileManager.default.fileExists(atPath: asset.path) {
-            guard Date() < assetDeadline else {
-                throw Fail("CoreSimulator removed \(runtime.display) (\(runtime.build)) but not its "
-                    + "\(formatBytes(runtime.size)) asset at \(asset.path); run `xcrun simctl runtime scan-and-mount`, "
-                    + "then `xcodectl remove \(runtime.platform?.rawValue ?? "<platform>") \(runtime.build)` again")
-            }
-            Thread.sleep(forTimeInterval: 0.5)
+        let failure = Fail("CoreSimulator removed \(runtime.display) (\(runtime.build)) but not its "
+            + "\(formatBytes(runtime.size)) asset at \(asset.path); run `xcrun simctl runtime scan-and-mount`, "
+            + "then `xcodectl runtime remove \(runtime.platform?.rawValue ?? "<platform>") \(runtime.build)` again")
+        guard (try? run(executable, ["runtime", "scan-and-mount"])) != nil,
+              let again = reregistered(runtime, within: 120)
+        else {
+            throw failure
+        }
+        _ = try deleteRegistration(again.identifier, timeout: timeout)
+        guard isPurged(asset) else {
+            throw failure
+        }
+    }
+
+    /// The registration `scan-and-mount` gives the asset of a deleted runtime: same build, same asset,
+    /// a new identifier. It can be deleted once CoreSimulator has verified it and calls it `Ready`.
+    static func reregistration(of runtime: InstalledRuntime, in registered: [InstalledRuntime]) -> InstalledRuntime? {
+        guard let asset = runtime.assetDirectory?.path else {
+            return nil
+        }
+        return registered.first {
+            $0.isReady && $0.build.lowercased() == runtime.build.lowercased() && $0.assetDirectory?.path == asset
         }
     }
 
@@ -557,6 +561,52 @@ enum SimCtl {
 
     private static var executable: URL {
         URL(fileURLWithPath: "/usr/bin/xcrun")
+    }
+
+    /// Runs `simctl runtime delete` and waits for the registration to leave `Deleting`. True when simctl
+    /// reported SimDiskImageError 30.
+    private static func deleteRegistration(_ identifier: String, timeout: TimeInterval) throws -> Bool {
+        var assetInDoubt = false
+        do {
+            try run(executable, ["runtime", "delete", identifier])
+        } catch let error as Fail where isRemovedWithoutReclaimedAsset(error.description) {
+            assetInDoubt = true
+        }
+        let deadline = Date().addingTimeInterval(timeout)
+        while let pending = try? runtimes().first(where: { $0.identifier == identifier }),
+              pending.state == "Deleting"
+        {
+            guard Date() < deadline else {
+                throw Fail("`simctl runtime delete \(identifier)` is still running after \(Int(timeout))s")
+            }
+            Thread.sleep(forTimeInterval: 0.5)
+        }
+        return assetInDoubt
+    }
+
+    /// Whether the asset directory goes within 30 s; mobileassetd purges it after simctl returns.
+    private static func isPurged(_ asset: URL) -> Bool {
+        let deadline = Date().addingTimeInterval(30)
+        while FileManager.default.fileExists(atPath: asset.path) {
+            guard Date() < deadline else {
+                return false
+            }
+            Thread.sleep(forTimeInterval: 0.5)
+        }
+        return true
+    }
+
+    /// Waits for `scan-and-mount` to register the asset again. The registration can be missing right
+    /// after the scan returns and stays `Verifying` for up to a minute.
+    private static func reregistered(_ runtime: InstalledRuntime, within seconds: TimeInterval) -> InstalledRuntime? {
+        let deadline = Date().addingTimeInterval(seconds)
+        repeat {
+            if let registered = try? runtimes(), let again = reregistration(of: runtime, in: registered) {
+                return again
+            }
+            Thread.sleep(forTimeInterval: 1)
+        } while Date() < deadline
+        return nil
     }
 
     @discardableResult
