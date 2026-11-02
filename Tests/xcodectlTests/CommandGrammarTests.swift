@@ -36,6 +36,11 @@ struct CommandGrammarTests {
         #expect(remove.keepRuntimes == true)
     }
 
+    @Test func `uninstall is remove`() throws {
+        let remove = try #require(XcodeCtl.parseAsRoot(["uninstall", "27.1"]) as? Remove)
+        #expect(remove.version == "27.1")
+    }
+
     @Test func `upgrade takes one version, scope and beta flags`() throws {
         let all = try #require(XcodeCtl.parseAsRoot(["upgrade", "--beta", "--dry-run"]) as? Upgrade)
         #expect(all.version == nil)

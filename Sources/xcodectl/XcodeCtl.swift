@@ -1168,7 +1168,8 @@ struct Remove: AsyncParsableCommand {
         discussion: """
         Runtimes another installed Xcode also uses stay. `xcodectl runtime remove` deletes one simulator \
         runtime.
-        """)
+        """,
+        aliases: ["uninstall"])
 
     @Argument(help: "Installed version.", completion: .custom(completeInstalledVersion))
     var version: String
